@@ -85,10 +85,10 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
 
     lo_des_translation_result = ao_xl8->describetexttranslationjob( iv_jobid = iv_jobid ).
     WHILE lo_des_translation_result->get_textxlationjobproperties( )->get_jobstatus( ) <> iv_jobstatus.
-      IF sy-index = 60.
-        EXIT.               "Maximum 900 seconds.
+      IF sy-index = 15.
+        EXIT.               "Maximum 50 minutes
       ENDIF.
-      WAIT UP TO 15 SECONDS.
+      WAIT UP TO 60 SECONDS.
       lo_des_translation_result = ao_xl8->describetexttranslationjob( iv_jobid = iv_jobid ).
     ENDWHILE.
   ENDMETHOD.
@@ -344,10 +344,10 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
     "Testing.
     ao_xl8_actions->describe_text_translation_job( EXPORTING iv_jobid = lv_jobid IMPORTING oo_result = lo_des_translation_result ).
     WHILE lo_des_translation_result->get_textxlationjobproperties( )->get_jobstatus( ) <> 'COMPLETED'.
-      IF sy-index = 90.
-        EXIT.               "maximum 1350 seconds
+      IF sy-index = 30.
+        EXIT.               "maximum 30 minutes
       ENDIF.
-      WAIT UP TO 15 SECONDS.
+      WAIT UP TO 60 SECONDS.
       ao_xl8_actions->describe_text_translation_job( EXPORTING iv_jobid = lv_jobid IMPORTING oo_result = lo_des_translation_result ).
     ENDWHILE.
 
