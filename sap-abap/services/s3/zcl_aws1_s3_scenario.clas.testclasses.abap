@@ -20,6 +20,7 @@ CLASS ltc_zcl_aws1_s3_scenario DEFINITION FOR TESTING DURATION SHORT RISK LEVEL 
     METHODS getting_started_scenario FOR TESTING RAISING /aws1/cx_rt_generic.
 
     METHODS setup RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
+    METHODS teardown RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
 
 ENDCLASS.
 
@@ -29,7 +30,7 @@ CLASS ltc_zcl_aws1_s3_scenario IMPLEMENTATION.
     DATA lv_param TYPE btcxpgpar.
     ao_session = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
     DATA(lv_acct) = ao_session->get_account_id( ).
-    av_bucket = |sap-abap-s3-demo-bucket-{ lv_acct }|.
+    av_bucket = |sap-abap-s3-scenario-bucket-{ lv_acct }|.
 
     ao_s3 = /aws1/cl_s3_factory=>create( ao_session ).
     ao_s3_scenario = NEW zcl_aws1_s3_scenario( ).
@@ -46,8 +47,15 @@ CLASS ltc_zcl_aws1_s3_scenario IMPLEMENTATION.
     /aws1/cl_rt_assert_abap=>assert_subrc( iv_exp = 0
                                            iv_msg = |Could not create { cv_file }| ).
 
+  ENDMETHOD.
+
+  METHOD teardown.
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_bucket ).
 
   ENDMETHOD.
+
+
+
   METHOD getting_started_scenario.
     ao_s3_scenario->getting_started_with_s3(
       iv_bucket_name = av_bucket

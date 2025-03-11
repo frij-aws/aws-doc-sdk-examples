@@ -451,7 +451,7 @@ CLASS ltc_zcl_aws1_ec2_actions IMPLEMENTATION.
     ov_ami_id = lo_ami-image->get_imageid( ).
   ENDMETHOD.
   METHOD wait_until_status_change.
-    DO 48 TIMES.
+    DO 96 TIMES.
       WAIT UP TO 5 SECONDS.
       DATA(lo_describe_result) = ao_ec2->describeinstances(
           it_instanceids = VALUE /aws1/cl_ec2instidstringlist_w=>tt_instanceidstringlist(
