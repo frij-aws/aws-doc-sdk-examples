@@ -106,7 +106,7 @@ CLASS ltc_zcl_aws1_sgm_scenario IMPLEMENTATION.
     lv_bucket_name = cv_bucket_name && lv_uuid_16.
     TRANSLATE lv_bucket_name TO LOWER CASE.
 
-    ao_s3->createbucket( iv_bucket = lv_bucket_name ).
+    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name io_s3 = ao_s3 io_session = ao_session ).
 
     lv_trn_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_train_key.
     lv_val_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_val_key.
