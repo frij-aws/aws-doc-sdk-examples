@@ -9,13 +9,13 @@ CLASS ltc_zcl_aws1_ec2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
   PRIVATE SECTION.
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
 
-    class-DATA ao_ec2 TYPE REF TO /aws1/if_ec2.
-    class-DATA ao_session TYPE REF TO /aws1/cl_rt_session_base.
-    class-DATA ao_ec2_actions TYPE REF TO zcl_aws1_ec2_actions.
-    class-DATA av_vpc_id TYPE /aws1/ec2string.
-    class-DATA av_subnet_id TYPE /aws1/ec2string.
-    class-data at_instance_id type table of /AWS1/EC2STRING. " table of instance IDs to terminate
-    class-data av_instance_id type /AWS1/EC2STRING. " main instance Id for tests
+    CLASS-DATA ao_ec2 TYPE REF TO /aws1/if_ec2.
+    CLASS-DATA ao_session TYPE REF TO /aws1/cl_rt_session_base.
+    CLASS-DATA ao_ec2_actions TYPE REF TO zcl_aws1_ec2_actions.
+    CLASS-DATA av_vpc_id TYPE /aws1/ec2string.
+    CLASS-DATA av_subnet_id TYPE /aws1/ec2string.
+    CLASS-DATA at_instance_id TYPE TABLE OF /aws1/ec2string. " table of instance IDs to terminate
+    CLASS-DATA av_instance_id TYPE /aws1/ec2string. " main instance Id for tests
 
     METHODS: allocate_address FOR TESTING RAISING /aws1/cx_rt_generic,
       associate_address FOR TESTING RAISING /aws1/cx_rt_generic,
@@ -36,11 +36,11 @@ CLASS ltc_zcl_aws1_ec2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
       start_instances FOR TESTING RAISING /aws1/cx_rt_generic,
       stop_instances FOR TESTING RAISING /aws1/cx_rt_generic.
 
-    class-METHODS class_setup RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
-    class-METHODS class_teardown RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
+    CLASS-METHODS class_setup RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
+    CLASS-METHODS class_teardown RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic.
 
 
-    class-METHODS:
+    CLASS-METHODS:
       get_ami_id
         RETURNING VALUE(ov_ami_id) TYPE /aws1/ec2string
         RAISING   /aws1/cx_rt_generic,
@@ -73,9 +73,9 @@ CLASS ltc_zcl_aws1_ec2_actions IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD class_teardown.
-    loop at at_instance_id ASSIGNING FIELD-SYMBOL(<instance_id>).
+    LOOP AT at_instance_id ASSIGNING FIELD-SYMBOL(<instance_id>).
       terminate_instance( <instance_id> ).
-    endloop.
+    ENDLOOP.
 
     DO 4 TIMES.
       TRY.
@@ -96,8 +96,8 @@ CLASS ltc_zcl_aws1_ec2_actions IMPLEMENTATION.
         CATCH /aws1/cx_ec2clientexc INTO lo_ex.
           IF lo_ex->av_err_code = 'DependencyViolation'.
             WAIT UP TO 15 SECONDS.
-          elseif lo_ex->av_err_code = 'InvalidVpcID.NotFound'.
-            exit.
+          ELSEIF lo_ex->av_err_code = 'InvalidVpcID.NotFound'.
+            EXIT.
           ELSE.
             RAISE EXCEPTION lo_ex.
           ENDIF.
@@ -209,7 +209,7 @@ CLASS ltc_zcl_aws1_ec2_actions IMPLEMENTATION.
       act = lv_current_status
       exp = 'running'
       msg = |EC2 instance { lo_instance->get_instanceid( ) } should have been in 'running' state| ).
-    append lo_instance->get_instanceid( ) to at_instance_id.
+    APPEND lo_instance->get_instanceid( ) TO at_instance_id.
   ENDMETHOD.
   METHOD monitor_instance.
     ao_ec2_actions->monitor_instance( av_instance_id ).
@@ -474,7 +474,7 @@ CLASS ltc_zcl_aws1_ec2_actions IMPLEMENTATION.
         iv_subnetid = iv_subnet_id ).
     READ TABLE lo_create_result->get_instances( ) INTO DATA(lo_instance) INDEX 1.
     ov_instance_id = lo_instance->get_instanceid( ).
-    append ov_instance_id to at_instance_id.
+    APPEND ov_instance_id TO at_instance_id.
   ENDMETHOD.
   METHOD terminate_instance.
     ao_ec2->terminateinstances00(

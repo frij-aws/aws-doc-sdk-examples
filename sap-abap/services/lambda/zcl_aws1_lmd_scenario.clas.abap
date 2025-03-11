@@ -61,11 +61,11 @@ CLASS ZCL_AWS1_LMD_SCENARIO IMPLEMENTATION.
                     iv_rolename = iv_role_name
                     iv_assumerolepolicydocument = lv_policy_document
                     iv_description = 'Grant lambda permission to write to logs' ).
-            data(lv_role_arn) = lo_create_role_output->get_role( )->get_arn( ).
+            DATA(lv_role_arn) = lo_create_role_output->get_role( )->get_arn( ).
             MESSAGE 'IAM role created.' TYPE 'I'.
             WAIT UP TO 10 SECONDS.            " Make sure that the IAM role is ready for use. "
           CATCH /aws1/cx_iamentityalrdyexex.
-            data(lo_role) = lo_iam->getrole( iv_rolename = iv_role_name ).
+            DATA(lo_role) = lo_iam->getrole( iv_rolename = iv_role_name ).
             lv_role_arn = lo_role->get_role( )->get_arn( ).
           CATCH /aws1/cx_iaminvalidinputex.
             MESSAGE 'The request contains a non-valid parameter.' TYPE 'E'.

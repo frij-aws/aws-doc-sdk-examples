@@ -18,7 +18,6 @@ CLASS ltc_zcl_aws1_lmd_scenario DEFINITION FOR TESTING DURATION SHORT RISK LEVEL
 
     METHODS: setup RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic,
       teardown RAISING /aws1/cx_rt_generic zcx_aws1_ex_generic,
-
       create_code
         RETURNING VALUE(oo_code) TYPE REF TO /aws1/cl_lmdfunctioncode
         RAISING   /aws1/cx_rt_generic,

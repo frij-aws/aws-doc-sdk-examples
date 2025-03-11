@@ -190,7 +190,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role Amazon Resource Name (ARN).
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -352,7 +352,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -568,7 +568,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -783,7 +783,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -1012,7 +1012,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -1248,7 +1248,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -1495,7 +1495,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -1765,7 +1765,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
@@ -2001,7 +2001,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define notebook name.
@@ -2147,7 +2147,7 @@ CLASS ltc_zcl_aws1_sgm_actions IMPLEMENTATION.
 
     "Define role ARN.
     DATA(lt_roles) = ao_session->get_configuration( )->get_logical_iam_roles( ).
-    READ TABLE lt_roles index 1 INTO DATA(lo_role).  " take first role from the logical role mapping
+    READ TABLE lt_roles INDEX 1 INTO DATA(lo_role).  " take first role from the logical role mapping
     av_lrole = lo_role-iam_role_arn.
 
     "Define job name.
