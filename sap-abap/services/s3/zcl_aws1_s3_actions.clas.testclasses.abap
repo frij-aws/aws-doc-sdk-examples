@@ -72,11 +72,16 @@ CLASS ltc_zcl_aws1_s3_actions IMPLEMENTATION.
 
   ENDMETHOD.
   METHOD class_teardown.
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_bucket ).
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_bucket_create ).
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_bucket_delete ).
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_src_bucket ).
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_dest_bucket ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_bucket ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_bucket_create ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_bucket_delete ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_src_bucket ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_dest_bucket ).
   ENDMETHOD.
 
   METHOD create_bucket.
@@ -285,9 +290,9 @@ CLASS ltc_zcl_aws1_s3_actions IMPLEMENTATION.
   METHOD delete_bucket.
     ao_s3_actions->delete_bucket( av_bucket_delete ).
     assert_bucket_exists(
-    iv_exp = abap_false
-  iv_bucket = av_bucket_delete
-  iv_msg = |Bucket { av_bucket_delete } should have been deleted| ).
+      iv_exp = abap_false
+      iv_bucket = av_bucket_delete
+      iv_msg = |Bucket { av_bucket_delete } should have been deleted| ).
 
 
   ENDMETHOD.
@@ -299,15 +304,15 @@ CLASS ltc_zcl_aws1_s3_actions IMPLEMENTATION.
         lv_found = abap_false.
       CATCH /aws1/cx_s3_clientexc INTO DATA(lo_ex2).
         IF lo_ex2->av_http_code = 404.
-        lv_found = abap_false.
+          lv_found = abap_false.
         ELSE.
           RAISE EXCEPTION lo_ex2.
         ENDIF.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
-  act = lv_found
-  exp = iv_exp
-  msg = iv_msg ).
+      act = lv_found
+      exp = iv_exp
+      msg = iv_msg ).
 
   ENDMETHOD.
 

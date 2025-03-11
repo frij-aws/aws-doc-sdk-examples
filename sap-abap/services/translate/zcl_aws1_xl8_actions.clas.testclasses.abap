@@ -145,7 +145,9 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
     "Create training data in Amazon Simple Storage Service (Amazon S3).
     lv_bucket_name = cv_bucket_name && lv_uuid_16.
     TRANSLATE lv_bucket_name TO LOWER CASE.
-    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name io_s3 = ao_s3 io_session = ao_session ).
+    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name
+                                      io_s3 = ao_s3
+                                      io_session = ao_session ).
 
     lv_input_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_input_folder.
     lv_output_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_output_folder.
@@ -216,7 +218,9 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
     "Create training data in Amazon S3.
     lv_bucket_name = cv_bucket_name && lv_uuid_16.
     TRANSLATE lv_bucket_name TO LOWER CASE.
-    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name io_s3 = ao_s3 io_session = ao_session ).
+    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name
+                                      io_s3 = ao_s3
+                                      io_session = ao_session ).
 
 
     lv_input_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_input_folder.
@@ -301,7 +305,9 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
     "Create training data in Amazon S3.
     lv_bucket_name = cv_bucket_name && lv_uuid_16.
     TRANSLATE lv_bucket_name TO LOWER CASE.
-    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name io_s3 = ao_s3 io_session = ao_session ).
+    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name
+                                      io_s3 = ao_s3
+                                      io_session = ao_session ).
 
 
     lv_input_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_input_folder.
@@ -386,7 +392,9 @@ CLASS ltc_zcl_aws1_xl8_actions IMPLEMENTATION.
     "Create training data in Amazon S3.
     lv_bucket_name = cv_bucket_name && lv_uuid_16.
     TRANSLATE lv_bucket_name TO LOWER CASE.
-    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name io_s3 = ao_s3 io_session = ao_session ).
+    zcl_aws1_ex_utils=>create_bucket( iv_bucket = lv_bucket_name
+                                      io_s3 = ao_s3
+                                      io_session = ao_session ).
 
 
     lv_input_data_s3uri = 's3://' && lv_bucket_name && '/' && cv_input_folder.

@@ -50,7 +50,8 @@ CLASS ltc_zcl_aws1_s3_scenario IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD teardown.
-    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_bucket ).
+    zcl_aws1_ex_utils=>cleanup_bucket( io_s3 = ao_s3
+                                       iv_bucket = av_bucket ).
 
   ENDMETHOD.
 
