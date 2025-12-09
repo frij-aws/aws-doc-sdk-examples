@@ -20,6 +20,13 @@
     <item>/sap-abap/services/sqs/README.md</item>
     <item>/sap-abap/services/textract/README.md</item>
     <item>/sap-abap/services/translate/README.md</item>
+    <item>/sap-abap/services/cpd/README.md</item>
+    <item>/sap-abap/services/cwt/README.md</item>
+    <item>/sap-abap/services/kns/README.md</item>
+    <item>/sap-abap/services/lmd/README.md</item>
+    <item>/sap-abap/services/sgm/README.md</item>
+    <item>/sap-abap/services/tex/README.md</item>
+    <item>/sap-abap/services/xl8/README.md</item>
    </IGNORE>
   </DATA>
  </asx:values>
