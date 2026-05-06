@@ -31,7 +31,7 @@ CLASS ltc_awsex_cl_s3c_actions DEFINITION FOR TESTING
     " -----------------------------------------------------------------------
     CLASS-DATA av_bucket_name    TYPE /aws1/s3_bucketname.
     CLASS-DATA av_role_arn       TYPE /aws1/s3ciamrolearn.
-    CLASS-DATA av_role_name      TYPE /aws1/iamrolename.
+    CLASS-DATA av_role_name      TYPE /aws1/iamrolenametype.
     CLASS-DATA av_manifest_arn   TYPE /aws1/s3cs3keyarnstring.
     CLASS-DATA av_manifest_etag  TYPE /aws1/s3cnonemptymaxlength6400.
     CLASS-DATA av_report_bucket  TYPE /aws1/s3cs3bucketarnstring.
