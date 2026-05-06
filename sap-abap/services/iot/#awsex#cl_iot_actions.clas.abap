@@ -90,7 +90,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
     " snippet-start:[iot.abapv1.create_thing]
     TRY.
         oo_result = lo_iot->creatething( iv_thingname = iv_thing_name ). " oo_result is returned for testing purposes. "
-        MESSAGE 'IoT thing created' TYPE 'I'.
+        MESSAGE |IoT thing created: { iv_thing_name } ARN: { oo_result->get_thingarn( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotresrcalrdyexistsex.
         MESSAGE 'Thing already exists. Skipping creation.' TYPE 'I'.
     ENDTRY.
@@ -120,7 +120,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
           ENDIF.
         ENDDO.
 
-        MESSAGE 'Retrieved list of IoT things' TYPE 'I'.
+        MESSAGE |Retrieved { lines( lt_things ) } IoT things| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -140,7 +140,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
         DATA(lv_certificate_id) = oo_result->get_certificateid( ).
         DATA(lv_certificate_arn) = oo_result->get_certificatearn( ).
         DATA(lv_certificate_pem) = oo_result->get_certificatepem( ).
-        MESSAGE 'Keys and certificate created' TYPE 'I'.
+        MESSAGE |Keys and certificate created. Certificate ID: { lv_certificate_id }| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -159,7 +159,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
         lo_iot->attachthingprincipal(
           iv_thingname = iv_thing_name
           iv_principal = iv_principal ).
-        MESSAGE 'Certificate attached to thing' TYPE 'I'.
+        MESSAGE |Certificate attached to thing { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex.
         MESSAGE 'Cannot attach principal. Resource not found.' TYPE 'E'.
     ENDTRY.
@@ -178,7 +178,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
     TRY.
         oo_result = lo_iot->describeendpoint( iv_endpointtype = iv_endpoint_type ). " oo_result is returned for testing purposes. "
         DATA(lv_endpoint_address) = oo_result->get_endpointaddress( ).
-        MESSAGE 'Retrieved endpoint address' TYPE 'I'.
+        MESSAGE |Endpoint address: { lv_endpoint_address }| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -208,7 +208,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
           ENDIF.
         ENDDO.
 
-        MESSAGE 'Retrieved list of certificates' TYPE 'I'.
+        MESSAGE |Retrieved { lines( lt_certificates ) } certificates| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -227,7 +227,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
         lo_iot->detachthingprincipal(
           iv_thingname = iv_thing_name
           iv_principal = iv_principal ).
-        MESSAGE 'Certificate detached from thing' TYPE 'I'.
+        MESSAGE |Certificate detached from thing { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex.
         MESSAGE 'Cannot detach principal. Resource not found.' TYPE 'E'.
     ENDTRY.
@@ -250,7 +250,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
 
         " Then delete the certificate
         lo_iot->deletecertificate( iv_certificateid = iv_certificate_id ).
-        MESSAGE 'Certificate deleted' TYPE 'I'.
+        MESSAGE |Certificate deleted: { iv_certificate_id }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex.
         MESSAGE 'Cannot delete certificate. Resource not found.' TYPE 'E'.
     ENDTRY.
@@ -288,7 +288,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
         lo_iot->createtopicrule(
           iv_rulename = iv_rule_name
           io_topicrulepayload = lo_payload ).
-        MESSAGE 'Topic rule created' TYPE 'I'.
+        MESSAGE |Topic rule created: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresrcalrdyexistsex.
         MESSAGE 'Topic rule already exists. Skipping creation.' TYPE 'I'.
     ENDTRY.
@@ -318,7 +318,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
           ENDIF.
         ENDDO.
 
-        MESSAGE 'Retrieved list of topic rules' TYPE 'I'.
+        MESSAGE |Retrieved { lines( lt_rules ) } topic rules| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -336,7 +336,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
     TRY.
         oo_result = lo_iot->searchindex( iv_querystring = iv_query ). " oo_result is returned for testing purposes. "
         DATA(lt_things) = oo_result->get_things( ).
-        MESSAGE 'Search index completed' TYPE 'I'.
+        MESSAGE |Search index returned { lines( lt_things ) } results| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'E'.
     ENDTRY.
@@ -357,7 +357,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
           iv_thingindexingmode = 'REGISTRY' ).
 
         lo_iot->updateindexingconfiguration( io_thingindexingconf = lo_thing_index_config ).
-        MESSAGE 'Indexing configuration updated' TYPE 'I'.
+        MESSAGE |Indexing configuration updated to mode: REGISTRY| TYPE 'I'.
       CATCH /aws1/cx_rt_generic.
         MESSAGE 'Failed to update indexing configuration' TYPE 'E'.
     ENDTRY.
@@ -374,7 +374,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
     " snippet-start:[iot.abapv1.delete_thing]
     TRY.
         lo_iot->deletething( iv_thingname = iv_thing_name ).
-        MESSAGE 'IoT thing deleted' TYPE 'I'.
+        MESSAGE |IoT thing deleted: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex.
         MESSAGE 'Cannot delete thing. Resource not found.' TYPE 'E'.
     ENDTRY.
@@ -391,7 +391,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
     " snippet-start:[iot.abapv1.delete_topic_rule]
     TRY.
         lo_iot->deletetopicrule( iv_rulename = iv_rule_name ).
-        MESSAGE 'Topic rule deleted' TYPE 'I'.
+        MESSAGE |Topic rule deleted: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_rt_generic.
         MESSAGE 'Failed to delete topic rule' TYPE 'E'.
     ENDTRY.
