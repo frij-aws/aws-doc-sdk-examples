@@ -277,8 +277,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_principals) = ao_iot->listthingprincipals( iv_thingname = lv_thing_name ).
     DATA(lt_principals) = lo_principals->get_principals( ).
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_principals INTO DATA(lv_principal).
-      IF lv_principal = lv_certificate_arn.
+    LOOP AT lt_principals INTO DATA(lo_principal).
+      IF lo_principal->get_value( ) = lv_certificate_arn.
         lv_found = abap_true.
         EXIT.
       ENDIF.
@@ -542,7 +542,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       TRY.
           " Try to get indexing configuration to verify it's ready
           DATA(lo_config) = ao_iot->getindexingconfiguration( ).
-          IF lo_config->get_thingindexingconfiguration( )->get_thingindexingmode( ) = 'REGISTRY'.
+          IF lo_config->get_thingindexingconf( )->get_thingindexingmode( ) = 'REGISTRY'.
             lv_index_ready = abap_true.
           ENDIF.
         CATCH /aws1/cx_rt_generic.
@@ -598,7 +598,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     " Verify configuration update
     TRY.
         DATA(lo_config) = ao_iot->getindexingconfiguration( ).
-        DATA(lv_mode) = lo_config->get_thingindexingconfiguration( )->get_thingindexingmode( ).
+        DATA(lv_mode) = lo_config->get_thingindexingconf( )->get_thingindexingmode( ).
 
         cl_abap_unit_assert=>assert_equals(
           exp = 'REGISTRY'
