@@ -15,8 +15,8 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION SHORT RISK LEVEL 
     CLASS-DATA ao_sns TYPE REF TO /aws1/if_sns.
     CLASS-DATA ao_iam TYPE REF TO /aws1/if_iam.
     CLASS-DATA av_lmd_uuid TYPE string.
-    CLASS-DATA av_topic_arn TYPE /aws1/snstopicarn.
-    CLASS-DATA av_role_arn TYPE /aws1/iamrolearn.
+    CLASS-DATA av_topic_arn TYPE /aws1/iotawsarn.
+    CLASS-DATA av_role_arn TYPE /aws1/iotawsarn.
     CLASS-DATA av_role_name TYPE /aws1/iamrolenamestring.
 
     METHODS: create_thing FOR TESTING RAISING /aws1/cx_rt_generic,
