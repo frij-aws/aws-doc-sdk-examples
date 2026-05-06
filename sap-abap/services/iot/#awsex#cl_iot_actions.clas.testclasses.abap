@@ -106,27 +106,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
         cl_abap_unit_assert=>fail( msg = |Failed to attach IAM policy: { lo_policy_error->get_text( ) }| ).
     ENDTRY.
 
-    " Wait for IAM role to propagate (required for IAM resources)
-    DATA lv_max_wait_time TYPE i VALUE 30.
-    DATA lv_elapsed_time TYPE i VALUE 0.
-    DATA lv_role_ready TYPE abap_bool VALUE abap_false.
-
-    " Poll until role is ready or timeout
-    WHILE lv_elapsed_time < lv_max_wait_time AND lv_role_ready = abap_false.
-      WAIT UP TO 2 SECONDS.
-      lv_elapsed_time = lv_elapsed_time + 2.
-      TRY.
-          " Try to get role to verify it's propagated
-          ao_iam->getrole( iv_rolename = av_role_name ).
-          lv_role_ready = abap_true.
-        CATCH /aws1/cx_rt_generic.
-          " Role not ready yet, continue waiting
-      ENDTRY.
-    ENDWHILE.
-
-    IF lv_role_ready = abap_false.
-      cl_abap_unit_assert=>fail( msg = 'IAM role did not propagate within expected time' ).
-    ENDIF.
+    " Wait for IAM role to propagate (IAM roles need significant time to propagate for cross-service assume role)
+    " AWS documentation recommends waiting at least 10 seconds, but cross-service can take up to 60 seconds
+    WAIT UP TO 60 SECONDS.
   ENDMETHOD.
 
   METHOD class_teardown.
