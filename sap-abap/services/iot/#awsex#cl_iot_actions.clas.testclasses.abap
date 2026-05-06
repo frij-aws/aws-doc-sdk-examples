@@ -80,7 +80,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
           iv_assumerolepolicydocument = lv_assume_role_policy
           it_tags = lt_iam_tags ).
         av_role_arn = lo_create_role_result->get_role( )->get_arn( ).
-      CATCH /aws1/cx_iamentityalrdyexsex.
+      CATCH /aws1/cx_iamentityalrdyexex.
         " Role already exists from previous failed test, get it
         TRY.
             DATA(lo_get_role_result) = ao_iam->getrole( iv_rolename = av_role_name ).
