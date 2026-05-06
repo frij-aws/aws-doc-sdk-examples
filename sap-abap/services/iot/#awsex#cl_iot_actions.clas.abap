@@ -184,7 +184,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.list_things]
     TRY.
-        DATA lt_things TYPE /aws1/cl_iotthingattribute=>tt_thingattrlist.
+        DATA lt_things TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
         DATA lv_next_token TYPE /aws1/iotnexttoken.
 
         " Paginate through all things

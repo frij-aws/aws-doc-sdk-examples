@@ -31,7 +31,7 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION
     " IAM role (real) for topic-rule actions — needs SNS publish permission
     CLASS-DATA av_iot_role_name TYPE /aws1/iamrolenametype.
     CLASS-DATA av_iot_role_arn  TYPE /aws1/iamarntype.
-    " IAM policy that grants IoT permission to publish to SNS
+    " IAM policy ARN (unused placeholder — inline policy used instead)
     CLASS-DATA av_iot_policy_arn TYPE /aws1/iamarntype.
     " SNS topic used in topic-rule actions
     CLASS-DATA av_sns_topic_arn TYPE /aws1/snstopicarn.
@@ -79,15 +79,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " CLASS_SETUP
 " Creates every resource needed for the test suite.
 " All resources are tagged convert_test=true.
-" Uses real IAM role + SNS topic so topic-rule creation never fails with a
-" "placeholder" ARN.
+" Uses a real IAM role + SNS topic so topic-rule creation never fails.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD class_setup.
-    DATA lv_rand           TYPE string.
-    DATA lv_account        TYPE string.
-    DATA lv_region         TYPE string.
-    DATA lv_trust_policy   TYPE string.
-    DATA lv_policy_doc     TYPE string.
+    DATA lv_rand         TYPE string.
+    DATA lv_account      TYPE string.
+    DATA lv_region       TYPE string.
+    DATA lv_trust_policy TYPE string.
+    DATA lv_policy_doc   TYPE string.
 
     " ── Initialise clients ──────────────────────────────────────────────────
     ao_session = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
@@ -112,8 +111,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     " 1. SNS topic (target for topic rules)
     " ────────────────────────────────────────────────────────────────────────
     DATA(lo_sns_rsp) = ao_sns->createtopic(
-      iv_name   = |iot-test-topic-{ lv_rand }|
-      it_tags   = VALUE /aws1/cl_snstag=>tt_taglist(
+      iv_name = |iot-test-topic-{ lv_rand }|
+      it_tags = VALUE /aws1/cl_snstag=>tt_taglist(
         ( NEW /aws1/cl_snstag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
     av_sns_topic_arn = lo_sns_rsp->get_topicarn( ).
     cl_abap_unit_assert=>assert_not_initial(
@@ -121,18 +120,18 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = 'Failed to create SNS topic for IoT test suite' ).
 
     " ────────────────────────────────────────────────────────────────────────
-    " 2. IAM role that IoT can assume, with permission to publish to SNS
+    " 2. IAM role that IoT can assume, with SNS publish permission
     " ────────────────────────────────────────────────────────────────────────
-    " Trust policy: IoT service can assume this role
+    " Trust policy — plain string concat avoids ABAP brace/template issues
     lv_trust_policy =
       '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",' &&
       '"Principal":{"Service":"iot.amazonaws.com"},' &&
       '"Action":"sts:AssumeRole"}]}'.
 
     DATA(lo_role_rsp) = ao_iam->createrole(
-      iv_rolename                    = av_iot_role_name
-      iv_assumerolepolicydocument    = lv_trust_policy
-      iv_description                 = 'IoT test role - convert_test'
+      iv_rolename                 = av_iot_role_name
+      iv_assumerolepolicydocument = lv_trust_policy
+      iv_description              = 'IoT test role - convert_test'
       it_tags = VALUE /aws1/cl_iamtag=>tt_taglisttype(
         ( NEW /aws1/cl_iamtag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
     av_iot_role_arn = lo_role_rsp->get_role( )->get_arn( ).
@@ -140,23 +139,21 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = av_iot_role_arn
       msg = |Failed to create IAM role { av_iot_role_name }| ).
 
-    " Inline permission policy: allow publishing to the SNS topic
-    " Build with plain-string concatenation to avoid ABAP template-brace
-    " confusion with JSON curly braces.
+    " Inline permission policy — plain string concat avoids JSON-brace issues
     lv_policy_doc = '{"Version":"2012-10-17","Statement":[' &&
                     '{"Effect":"Allow","Action":"sns:Publish",' &&
                     '"Resource":"' && av_sns_topic_arn && '"}]}'.
 
     ao_iam->putrolepolicy(
-      iv_rolename    = av_iot_role_name
-      iv_policyname  = 'iot-sns-publish'
+      iv_rolename       = av_iot_role_name
+      iv_policyname     = 'iot-sns-publish'
       iv_policydocument = lv_policy_doc ).
 
     " IAM propagation pause — required so IoT can resolve the role
     WAIT UP TO 10 SECONDS.
 
     " ────────────────────────────────────────────────────────────────────────
-    " 3. Shared IoT thing (used by list/attach/detach/shadow tests)
+    " 3. Shared IoT thing (list/attach/detach/shadow tests)
     " ────────────────────────────────────────────────────────────────────────
     DATA(lo_thing_rsp) = ao_iot->creatething( iv_thingname = av_thing_name ).
     av_thing_arn = lo_thing_rsp->get_thingarn( ).
@@ -232,13 +229,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
         it_actions = lt_del_acts ) ).
 
     " ────────────────────────────────────────────────────────────────────────
-    " 9. Enable thing indexing so search_index works
+    " 9. Enable REGISTRY indexing; poll until AWS_Things index is ACTIVE
     " ────────────────────────────────────────────────────────────────────────
     ao_iot->updateindexingconfiguration(
       io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
         iv_thingindexingmode = 'REGISTRY' ) ).
 
-    " Poll until the AWS_Things index is ACTIVE (max 60 s)
     DATA lv_ready TYPE abap_bool VALUE abap_false.
     DO 12 TIMES.
       TRY.
@@ -260,9 +256,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 
 " ═══════════════════════════════════════════════════════════════════════════
-" CLASS_TEARDOWN
-" Removes every resource created in class_setup (and by individual tests).
-" Deletion failures are swallowed so other cleanups can proceed.
+" CLASS_TEARDOWN — removes every resource created above
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD class_teardown.
 
@@ -272,7 +266,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
     TRY.
-        " May already be deleted by delete_topic_rule test
         ao_iot->deletetopicrule( iv_rulename = av_del_rule ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
@@ -294,7 +287,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " ── Delete-test certificate (may already be deleted by delete_certificate)
+    " ── Delete-test certificate (may already be gone) ───────────────────────
     TRY.
         ao_iot->updatecertificate(
           iv_certificateid = av_del_cert_id
@@ -309,12 +302,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
     TRY.
-        " May already be deleted by delete_thing test
         ao_iot->deletething( iv_thingname = av_del_thing ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " ── IAM role (detach inline policy first) ───────────────────────────────
+    " ── IAM role (remove inline policy first) ───────────────────────────────
     TRY.
         ao_iam->deleterolepolicy(
           iv_rolename   = av_iot_role_name
@@ -337,7 +329,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: create_thing
-" Calls the action, verifies the thing exists, tags it, cleans up.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD create_thing.
     DATA lv_rand TYPE string.
@@ -352,7 +343,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_desc->get_thingname( )
       msg = |Thing { lv_name } should have been created| ).
 
-    " Tag then clean up
     TRY.
         ao_iot->tagresource(
           iv_resourcearn = lo_desc->get_thingarn( )
@@ -366,14 +356,13 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: list_things
-" Verifies that the shared thing av_thing_name appears in the result.
+" Verifies that the shared thing appears in the paginated result.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_things.
     ao_actions->list_things( ).
 
-    " Page through ALL things and look for the shared one
-    DATA lt_all  TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
-    DATA lv_tok  TYPE /aws1/iotnexttoken.
+    DATA lt_all TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
+    DATA lv_tok TYPE /aws1/iotnexttoken.
     DO.
       DATA(lo_pg) = ao_iot->listthings( iv_nexttoken = lv_tok ).
       APPEND LINES OF lo_pg->get_things( ) TO lt_all.
@@ -396,17 +385,13 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: create_keys_and_certificate
-" Calls the action method and verifies a valid certificate is returned.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD create_keys_and_certificate.
-    " The action creates a cert internally; verify using SDK that the cert
-    " we ask it to create actually lands in AWS by calling describecertificate.
-    " We capture the cert from a fresh direct call to validate the pattern.
     DATA(lo_cert) = ao_iot->createkeysandcertificate( abap_true ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lo_cert->get_certificateid( )
-      msg = 'Certificate ID should not be empty after create_keys_and_certificate' ).
+      msg = 'Certificate ID should not be empty' ).
     cl_abap_unit_assert=>assert_not_initial(
       act = lo_cert->get_certificatearn( )
       msg = 'Certificate ARN should not be empty' ).
@@ -414,10 +399,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_cert->get_certificatepem( )
       msg = 'Certificate PEM should not be empty' ).
 
-    " Also call the action method to exercise the code path
+    " Also exercise the action method code path
     ao_actions->create_keys_and_certificate( ).
 
-    " Verify describecertificate works for the cert we created above
     DATA(lo_desc) = ao_iot->describecertificate(
       iv_certificateid = lo_cert->get_certificateid( ) ).
     cl_abap_unit_assert=>assert_equals(
@@ -425,7 +409,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_desc->get_certificatedescription( )->get_status( )
       msg = 'New certificate should be ACTIVE' ).
 
-    " Clean up the extra cert created in this test
     ao_iot->updatecertificate(
       iv_certificateid = lo_cert->get_certificateid( )
       iv_newstatus     = 'INACTIVE' ).
@@ -435,10 +418,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: attach_thing_principal
-" Attaches av_cert_arn to av_thing_name and verifies via listthingprincipals.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD attach_thing_principal.
-    " Ensure starting state: cert NOT attached
+    " Ensure clean starting state
     TRY.
         ao_iot->detachthingprincipal(
           iv_thingname = av_thing_name
@@ -465,7 +447,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: describe_endpoint
-" Verifies a non-empty ATS endpoint address is returned.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD describe_endpoint.
     ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
@@ -475,17 +456,15 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_ep->get_endpointaddress( )
       msg = 'Endpoint address must not be empty' ).
 
-    " Spot-check: should contain amazonaws.com
     DATA(lv_addr) = lo_ep->get_endpointaddress( ).
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lv_addr CS 'amazonaws.com' )
-      msg = |Endpoint address { lv_addr } does not look like an AWS endpoint| ).
+      msg = |Endpoint { lv_addr } does not look like an AWS endpoint| ).
   ENDMETHOD.
 
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: list_certificates
-" Verifies that av_cert_id appears in the paged result.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_certificates.
     ao_actions->list_certificates( ).
@@ -513,16 +492,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: detach_thing_principal
-" Ensures cert is attached first, then calls the action and verifies removal.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD detach_thing_principal.
-    " Ensure cert is attached before we try to detach
+    " Ensure cert is attached first
     TRY.
         ao_iot->attachthingprincipal(
           iv_thingname = av_thing_name
           iv_principal = av_cert_arn ).
       CATCH /aws1/cx_rt_generic.
-        " Already attached — that is fine
     ENDTRY.
 
     ao_actions->detach_thing_principal(
@@ -544,7 +521,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: delete_certificate
-" Uses av_del_cert_id, which was created in class_setup exclusively for this.
+" Uses av_del_cert_id created exclusively for this test.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD delete_certificate.
     ao_actions->delete_certificate( iv_certificate_id = av_del_cert_id ).
@@ -552,7 +529,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA lv_deleted TYPE abap_bool VALUE abap_true.
     TRY.
         ao_iot->describecertificate( iv_certificateid = av_del_cert_id ).
-        lv_deleted = abap_false.   " Still exists — test should fail
+        lv_deleted = abap_false.
       CATCH /aws1/cx_iotresourcenotfoundex.
         lv_deleted = abap_true.
     ENDTRY.
@@ -564,8 +541,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: create_topic_rule
-" Creates a fresh rule using the real IAM role + SNS topic from class_setup,
-" verifies it exists, then deletes it.
+" Uses the real IAM role + SNS topic from class_setup.
+" The gettopicrule response has: get_rulearn() and get_rule()->get_rulename()
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD create_topic_rule.
     DATA lv_rand TYPE string.
@@ -578,10 +555,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       iv_sns_action_arn = av_sns_topic_arn
       iv_role_arn       = av_iot_role_arn ).
 
-    DATA(lo_rule) = ao_iot->gettopicrule( iv_rulename = lv_rule ).
+    " gettopicrule returns a response object; the rule name sits inside
+    " the nested TopicRule object returned by get_rule()
+    DATA(lo_rsp) = ao_iot->gettopicrule( iv_rulename = lv_rule ).
     cl_abap_unit_assert=>assert_equals(
       exp = lv_rule
-      act = lo_rule->get_rulename( )
+      act = lo_rsp->get_rule( )->get_rulename( )
       msg = |Topic rule { lv_rule } was not created| ).
 
     ao_iot->deletetopicrule( iv_rulename = lv_rule ).
@@ -590,7 +569,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: list_topic_rules
-" Verifies that av_list_rule (created in class_setup) appears in results.
+" Verifies av_list_rule (from class_setup) appears in the paginated result.
+" list_topicrules items expose get_rulename() directly on each list item.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_topic_rules.
     ao_actions->list_topic_rules( ).
@@ -618,8 +598,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: search_index
-" class_setup already enabled REGISTRY indexing and waited for ACTIVE status.
-" We poll up to 30 s for av_thing_name to appear in the index, then assert.
+" class_setup enabled REGISTRY indexing and waited for ACTIVE status.
+" Polls up to 30 s for av_thing_name to appear in the index.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD search_index.
     DATA lv_query   TYPE /aws1/iotquerystring.
@@ -628,7 +608,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     lv_query = |thingName:{ av_thing_name }|.
 
-    " Poll: indexing can take a few seconds to reflect newly created things
     DO 6 TIMES.
       lv_attempt = sy-index.
       ao_actions->search_index( iv_query_string = lv_query ).
@@ -651,7 +630,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: update_indexing_configuration
-" Calls the action and reads back the configuration to confirm REGISTRY mode.
+" The correct getter is get_thingindexingconf() (not get_thingindexingconfiguration)
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD update_indexing_configuration.
     ao_actions->update_indexing_configuration( ).
@@ -659,14 +638,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_conf) = ao_iot->getindexingconfiguration( ).
     cl_abap_unit_assert=>assert_equals(
       exp = 'REGISTRY'
-      act = lo_conf->get_thingindexingconfiguration( )->get_thingindexingmode( )
+      act = lo_conf->get_thingindexingconf( )->get_thingindexingmode( )
       msg = 'Indexing mode should be REGISTRY after update_indexing_configuration' ).
   ENDMETHOD.
 
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: delete_thing
-" Uses av_del_thing, which was created in class_setup exclusively for this.
+" Uses av_del_thing created exclusively for this test.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD delete_thing.
     ao_actions->delete_thing( iv_thing_name = av_del_thing ).
@@ -686,15 +665,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: delete_topic_rule
-" Uses av_del_rule, which was created in class_setup exclusively for this.
+" Uses av_del_rule created exclusively for this test.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD delete_topic_rule.
-    " Verify the rule exists before we start
     TRY.
         ao_iot->gettopicrule( iv_rulename = av_del_rule ).
       CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         cl_abap_unit_assert=>fail(
-          msg = |Rule { av_del_rule } must exist before delete_topic_rule test: { lo_ex->get_text( ) }| ).
+          msg = |Rule { av_del_rule } must exist before delete_topic_rule: { lo_ex->get_text( ) }| ).
     ENDTRY.
 
     ao_actions->delete_topic_rule( iv_rule_name = av_del_rule ).
@@ -714,7 +692,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: update_thing_shadow
-" Calls the action and reads back the shadow to confirm the state was stored.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD update_thing_shadow.
     DATA(lv_payload) = CONV /aws1/iopjsondocument(
@@ -729,20 +706,17 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_shadow->get_payload( )
       msg = |Shadow payload for { av_thing_name } should not be empty after update| ).
 
-    " Confirm the desired colour is preserved in the returned document
     DATA(lv_json) = CONV string( lo_shadow->get_payload( ) ).
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lv_json CS 'blue' )
-      msg = |Shadow should contain the desired colour 'blue'| ).
+      msg = |Shadow should contain 'blue'; got: { lv_json }| ).
   ENDMETHOD.
 
 
 " ═══════════════════════════════════════════════════════════════════════════
 " TEST: get_thing_shadow
-" Seeds a known shadow state, then calls the action and verifies the value.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD get_thing_shadow.
-    " Seed a known shadow state directly via SDK
     DATA(lv_seed) = CONV /aws1/iopjsondocument(
       '{"state":{"desired":{"temperature":22}}}' ).
     ao_iop->updatethingshadow(
@@ -755,7 +729,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lv_result
       msg = 'get_thing_shadow must return a non-empty JSON string' ).
 
-    " The returned document must mention "temperature"
     DATA(lv_json) = CONV string( lv_result ).
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lv_json CS 'temperature' )
