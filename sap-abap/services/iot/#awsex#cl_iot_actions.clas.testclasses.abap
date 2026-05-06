@@ -372,7 +372,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     ao_actions->list_things( ).
 
     " Page through ALL things and look for the shared one
-    DATA lt_all  TYPE /aws1/cl_iotthingattribute=>tt_thingattrlist.
+    DATA lt_all  TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
     DATA lv_tok  TYPE /aws1/iotnexttoken.
     DO.
       DATA(lo_pg) = ao_iot->listthings( iv_nexttoken = lv_tok ).
