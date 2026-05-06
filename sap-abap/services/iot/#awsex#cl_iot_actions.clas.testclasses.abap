@@ -141,10 +141,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = |Failed to create IAM role { av_iot_role_name }| ).
 
     " Inline permission policy: allow publishing to the SNS topic
-    lv_policy_doc =
-      |{"Version":"2012-10-17","Statement":[| &&
-      |{"Effect":"Allow","Action":"sns:Publish",| &&
-      |"Resource":"{ av_sns_topic_arn }"}]}|.
+    " Build with plain-string concatenation to avoid ABAP template-brace
+    " confusion with JSON curly braces.
+    lv_policy_doc = '{"Version":"2012-10-17","Statement":[' &&
+                    '{"Effect":"Allow","Action":"sns:Publish",' &&
+                    '"Resource":"' && av_sns_topic_arn && '"}]}'.
 
     ao_iam->putrolepolicy(
       iv_rolename    = av_iot_role_name
