@@ -158,7 +158,7 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
     ao_s3->putobject(
         iv_bucket = av_bucket_name
         iv_key    = 'job-manifest.csv'
-        iv_body   = /aws1/cl_rt_conv_encoding=>utf8_to_xstring( lv_csv ) ).
+        iv_body   = /aws1/cl_rt_util=>string_to_xstring( lv_csv ) ).
 
     " Retrieve ETag (strip the surrounding quotes S3 includes)
     DATA(lo_head) = ao_s3->headobject(
@@ -192,7 +192,7 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
             iv_rolename                 = av_role_name
             iv_assumerolepolicydocument = lv_trust ).
         av_role_arn = lo_role_rsp->get_role( )->get_arn( ).
-      CATCH /aws1/cx_iam_entityalreadyexistsex.
+      CATCH /aws1/cx_iamentityalrdyexex.
         " Role already exists from a previous run — reuse it
         DATA(lo_gr) = ao_iam->getrole( iv_rolename = av_role_name ).
         av_role_arn = lo_gr->get_role( )->get_arn( ).
