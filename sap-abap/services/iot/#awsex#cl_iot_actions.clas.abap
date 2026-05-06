@@ -304,7 +304,7 @@ CLASS /AWSEX/CL_IOT_ACTIONS IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.list_topic_rules]
     TRY.
-        DATA lt_rules TYPE /aws1/cl_iottopicrulelstryle=>tt_topicrulelelist.
+        DATA lt_rules TYPE /aws1/cl_iottopicrulelistitem=>tt_topicrulelist.
         DATA lv_nexttoken TYPE /aws1/iotnexttoken.
 
         " List topic rules with pagination
