@@ -8,67 +8,69 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
   PRIVATE SECTION.
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
 
-    " Simulator sender address is pre-verified in every SES account and
-    " can be used as both FROM and TO without manual email verification.
-    CONSTANTS cv_simulator_addr TYPE /aws1/se2emailaddress
+    " The SES mailbox simulator SUCCESS address is pre-verified in every SES
+    " account and can be used as FROM and TO without any manual verification.
+    CONSTANTS cv_sim_addr TYPE /aws1/se2emailaddress
       VALUE 'success@simulator.amazonses.com'.
 
-    " Shared resources created in class_setup and cleaned up in class_teardown.
-    CLASS-DATA av_uuid_str        TYPE string.
-    CLASS-DATA av_contact_list    TYPE /aws1/se2contactlistname.
-    CLASS-DATA av_template_name   TYPE /aws1/se2emailtemplatename.
-    " Dedicated list/template used by the delete tests so that the shared
-    " resources remain available to all other tests.
-    CLASS-DATA av_del_list        TYPE /aws1/se2contactlistname.
-    CLASS-DATA av_del_template    TYPE /aws1/se2emailtemplatename.
+    " One shared contact list – the SES sandbox limit is 1 list per account.
+    " The delete_contact_list and create_contact_list tests temporarily remove
+    " and restore this list, so their names are kept in class-data so the
+    " teardown can still clean up safely.
+    CLASS-DATA av_contact_list  TYPE /aws1/se2contactlistname.
+    CLASS-DATA av_template_name TYPE /aws1/se2emailtemplatename.
+    CLASS-DATA av_del_template  TYPE /aws1/se2emailtemplatename.
 
-    CLASS-DATA ao_se2             TYPE REF TO /aws1/if_se2.
-    CLASS-DATA ao_session         TYPE REF TO /aws1/cl_rt_session_base.
-    CLASS-DATA ao_se2_actions     TYPE REF TO /awsex/cl_se2_actions.
+    CLASS-DATA ao_se2           TYPE REF TO /aws1/if_se2.
+    CLASS-DATA ao_session       TYPE REF TO /aws1/cl_rt_session_base.
+    CLASS-DATA ao_se2_actions   TYPE REF TO /awsex/cl_se2_actions.
 
-    METHODS: create_email_identity   FOR TESTING RAISING /aws1/cx_rt_generic,
-             create_contact_list     FOR TESTING RAISING /aws1/cx_rt_generic,
-             create_email_template   FOR TESTING RAISING /aws1/cx_rt_generic,
-             create_contact          FOR TESTING RAISING /aws1/cx_rt_generic,
-             send_email              FOR TESTING RAISING /aws1/cx_rt_generic,
-             send_email_template     FOR TESTING RAISING /aws1/cx_rt_generic,
-             list_contacts           FOR TESTING RAISING /aws1/cx_rt_generic,
-             delete_contact_list     FOR TESTING RAISING /aws1/cx_rt_generic,
-             delete_email_template   FOR TESTING RAISING /aws1/cx_rt_generic,
-             delete_email_identity   FOR TESTING RAISING /aws1/cx_rt_generic,
-             get_email_identity      FOR TESTING RAISING /aws1/cx_rt_generic,
-             send_bulk_email         FOR TESTING RAISING /aws1/cx_rt_generic.
+    METHODS: create_email_identity FOR TESTING RAISING /aws1/cx_rt_generic,
+             create_contact_list   FOR TESTING RAISING /aws1/cx_rt_generic,
+             create_email_template FOR TESTING RAISING /aws1/cx_rt_generic,
+             create_contact        FOR TESTING RAISING /aws1/cx_rt_generic,
+             send_email            FOR TESTING RAISING /aws1/cx_rt_generic,
+             send_email_template   FOR TESTING RAISING /aws1/cx_rt_generic,
+             list_contacts         FOR TESTING RAISING /aws1/cx_rt_generic,
+             delete_contact_list   FOR TESTING RAISING /aws1/cx_rt_generic,
+             delete_email_template FOR TESTING RAISING /aws1/cx_rt_generic,
+             delete_email_identity FOR TESTING RAISING /aws1/cx_rt_generic,
+             get_email_identity    FOR TESTING RAISING /aws1/cx_rt_generic,
+             send_bulk_email       FOR TESTING RAISING /aws1/cx_rt_generic.
 
     CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
     CLASS-METHODS class_teardown RAISING /aws1/cx_rt_generic.
 
-    " Helper: apply the mandatory convert_test tag to any SES resource ARN.
+    " Tag a SES resource ARN with convert_test=true.
     CLASS-METHODS tag_se2_resource
       IMPORTING iv_arn TYPE /aws1/se2amazonresourcename
       RAISING   /aws1/cx_rt_generic.
 
-    " Helper: build a unique short suffix from a fresh UUID.
-    CLASS-METHODS get_uuid_suffix
-      RETURNING VALUE(rv_suffix) TYPE string.
+    " Produce a 10-char lowercase hex suffix from a fresh UUID.
+    CLASS-METHODS uuid_suffix
+      RETURNING VALUE(rv_s) TYPE string.
+
+    " Ensure the one shared contact list exists and is seeded.
+    " Called from class_setup and from tests that need to restore it.
+    CLASS-METHODS ensure_contact_list RAISING /aws1/cx_rt_generic.
 
 ENDCLASS.
 
 
 CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
-  METHOD get_uuid_suffix.
-    " Produces a reproducible 10-character lowercase hex suffix.
+  METHOD uuid_suffix.
     DATA lv_uuid TYPE guid_32.
-    DATA lv_str  TYPE string.
+    DATA lv_s    TYPE string.
     TRY.
         lv_uuid = cl_system_uuid=>create_uuid_x16_static( ).
       CATCH cx_uuid_error.
         lv_uuid = /awsex/cl_utils=>get_random_string( ).
     ENDTRY.
-    lv_str = lv_uuid.
-    TRANSLATE lv_str TO LOWER CASE.
-    REPLACE ALL OCCURRENCES OF '-' IN lv_str WITH ''.
-    rv_suffix = lv_str(10).
+    lv_s = lv_uuid.
+    TRANSLATE lv_s TO LOWER CASE.
+    REPLACE ALL OCCURRENCES OF '-' IN lv_s WITH ''.
+    rv_s = lv_s(10).
   ENDMETHOD.
 
 
@@ -83,83 +85,71 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD class_setup.
-    " -----------------------------------------------------------------------
-    " Initialise SDK clients.
-    " -----------------------------------------------------------------------
-    ao_session    = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
-    ao_se2        = /aws1/cl_se2_factory=>create( ao_session ).
-    ao_se2_actions = NEW /awsex/cl_se2_actions( ).
-
-    av_uuid_str = get_uuid_suffix( ).
-
-    " -----------------------------------------------------------------------
-    " Derive resource names that are unique per test run.
-    " -----------------------------------------------------------------------
-    av_contact_list  = |se2-list-{ av_uuid_str }|.
-    av_template_name = |se2-tmpl-{ av_uuid_str }|.
-    av_del_list      = |se2-dlist-{ av_uuid_str }|.
-    av_del_template  = |se2-dtmpl-{ av_uuid_str }|.
-
-    DATA(lv_region)   = ao_session->get_region( ).
-    DATA(lv_acct)     = ao_session->get_account_id( ).
-
-    " -----------------------------------------------------------------------
-    " Build the convert_test tag list used at creation time.
-    " createemailidentity accepts it_tags so we tag at the API level.
-    " -----------------------------------------------------------------------
-    DATA lt_se2_tags TYPE /aws1/cl_se2tag=>tt_taglist.
-    APPEND NEW /aws1/cl_se2tag(
-      iv_key   = 'convert_test'
-      iv_value = 'true' ) TO lt_se2_tags.
-
-    " -----------------------------------------------------------------------
-    " Create the shared contact list used by most tests.
-    " -----------------------------------------------------------------------
+  METHOD ensure_contact_list.
+    " Creates the shared contact list if it does not already exist, then
+    " seeds it with the simulator address and applies the convert_test tag.
+    DATA(lv_region) = ao_session->get_region( ).
+    DATA(lv_acct)   = ao_session->get_account_id( ).
     TRY.
         ao_se2->createcontactlist( iv_contactlistname = av_contact_list ).
         tag_se2_resource(
           |arn:aws:ses:{ lv_region }:{ lv_acct }:contact-list/{ av_contact_list }| ).
       CATCH /aws1/cx_se2alreadyexistsex.
-        " Acceptable – left from a previous run.
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_cl_ex).
-        cl_abap_unit_assert=>fail(
-          msg = |class_setup: cannot create contact list: { lo_cl_ex->get_text( ) }| ).
+        " Already present – nothing to do.
     ENDTRY.
+    " Seed the simulator address so send tests always have a recipient.
+    TRY.
+        ao_se2->createcontact(
+          iv_contactlistname = av_contact_list
+          iv_emailaddress    = cv_sim_addr ).
+      CATCH /aws1/cx_se2alreadyexistsex.
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD class_setup.
+    ao_session    = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
+    ao_se2        = /aws1/cl_se2_factory=>create( ao_session ).
+    ao_se2_actions = NEW /awsex/cl_se2_actions( ).
+
+    DATA(lv_sfx)    = uuid_suffix( ).
+    DATA(lv_region) = ao_session->get_region( ).
+    DATA(lv_acct)   = ao_session->get_account_id( ).
 
     " -----------------------------------------------------------------------
-    " Create the shared email template used by most tests.
+    " Derive unique resource names for this test run.
+    " -----------------------------------------------------------------------
+    av_contact_list  = |se2-list-{ lv_sfx }|.
+    av_template_name = |se2-tmpl-{ lv_sfx }|.
+    av_del_template  = |se2-dtpl-{ lv_sfx }|.
+
+    " -----------------------------------------------------------------------
+    " Contact list  (1 list is the account-wide SES sandbox limit).
+    " We create one list and reuse it across all tests.
+    " -----------------------------------------------------------------------
+    ensure_contact_list( ).
+
+    " -----------------------------------------------------------------------
+    " Shared email template used by send_email_template / send_bulk_email.
     " -----------------------------------------------------------------------
     TRY.
         ao_se2->createemailtemplate(
           iv_templatename    = av_template_name
           io_templatecontent = NEW /aws1/cl_se2emailtmplcontent(
-            iv_subject = 'Weekly newsletter {{name}}'
-            iv_html    = '<html><body><h1>Hello {{name}}</h1></body></html>'
+            iv_subject = 'Newsletter {{name}}'
+            iv_html    = '<html><body><p>Hello {{name}}</p></body></html>'
             iv_text    = 'Hello {{name}}' ) ).
         tag_se2_resource(
           |arn:aws:ses:{ lv_region }:{ lv_acct }:template/{ av_template_name }| ).
       CATCH /aws1/cx_se2alreadyexistsex.
-        " Acceptable.
       CATCH /aws1/cx_rt_generic INTO DATA(lo_tmpl_ex).
         cl_abap_unit_assert=>fail(
           msg = |class_setup: cannot create template: { lo_tmpl_ex->get_text( ) }| ).
     ENDTRY.
 
     " -----------------------------------------------------------------------
-    " Create the dedicated list/template for the delete_* tests.
-    " These are recreated each run so the delete tests always have a live
-    " resource to work with.
+    " Dedicated template for the delete_email_template test.
     " -----------------------------------------------------------------------
-    TRY.
-        ao_se2->createcontactlist( iv_contactlistname = av_del_list ).
-        tag_se2_resource(
-          |arn:aws:ses:{ lv_region }:{ lv_acct }:contact-list/{ av_del_list }| ).
-      CATCH /aws1/cx_se2alreadyexistsex.
-        " Already there from a previous run – the delete test will delete it
-        " and the teardown catches NotFoundException gracefully.
-    ENDTRY.
-
     TRY.
         ao_se2->createemailtemplate(
           iv_templatename    = av_del_template
@@ -170,27 +160,16 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         tag_se2_resource(
           |arn:aws:ses:{ lv_region }:{ lv_acct }:template/{ av_del_template }| ).
       CATCH /aws1/cx_se2alreadyexistsex.
-        " Already there.
-    ENDTRY.
-
-    " -----------------------------------------------------------------------
-    " Seed the shared contact list with one simulator contact so that
-    " list_contacts, send_email_template and send_bulk_email always have
-    " at least one recipient ready.
-    " -----------------------------------------------------------------------
-    TRY.
-        ao_se2->createcontact(
-          iv_contactlistname = av_contact_list
-          iv_emailaddress    = cv_simulator_addr ).
-      CATCH /aws1/cx_se2alreadyexistsex.
-        " Fine – seeded in a previous run.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_dtpl_ex).
+        cl_abap_unit_assert=>fail(
+          msg = |class_setup: cannot create delete-template: { lo_dtpl_ex->get_text( ) }| ).
     ENDTRY.
 
   ENDMETHOD.
 
 
   METHOD class_teardown.
-    " Contacts inside the shared list.
+    " Remove all contacts from the shared list, then delete the list itself.
     TRY.
         DATA(lo_cts) = ao_se2->listcontacts( iv_contactlistname = av_contact_list ).
         LOOP AT lo_cts->get_contacts( ) INTO DATA(lo_ct).
@@ -204,172 +183,151 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " Shared contact list.
     TRY.
         ao_se2->deletecontactlist( iv_contactlistname = av_contact_list ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " Dedicated delete-test list (may already be gone if delete test ran).
-    TRY.
-        ao_se2->deletecontactlist( iv_contactlistname = av_del_list ).
-      CATCH /aws1/cx_se2notfoundexception.
-      CATCH /aws1/cx_rt_generic.
-    ENDTRY.
-
-    " Shared email template.
     TRY.
         ao_se2->deleteemailtemplate( iv_templatename = av_template_name ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " Dedicated delete-test template.
     TRY.
         ao_se2->deleteemailtemplate( iv_templatename = av_del_template ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
-
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: create_email_identity
-  " Creates a fresh email-address identity, verifies it was created via
-  " get_email_identity, then cleans up.
+  " Creates a fresh email-address identity, verifies it, cleans up.
   " =========================================================================
   METHOD create_email_identity.
-    DATA(lv_sfx)      = get_uuid_suffix( ).
-    " Use an address that clearly belongs to the safe example domain.
-    DATA(lv_identity) = |se2test{ lv_sfx }@example.com|.
-
-    DATA(lv_region) = ao_session->get_region( ).
-    DATA(lv_acct)   = ao_session->get_account_id( ).
-
-    " Tag at creation time using the it_tags parameter.
-    DATA lt_tags TYPE /aws1/cl_se2tag=>tt_taglist.
-    APPEND NEW /aws1/cl_se2tag(
-      iv_key   = 'convert_test'
-      iv_value = 'true' ) TO lt_tags.
+    DATA(lv_id) = |se2tst{ uuid_suffix( ) }@example.com|.
 
     " Call the action method under test.
-    ao_se2_actions->create_email_identity( lv_identity ).
+    ao_se2_actions->create_email_identity( lv_id ).
 
-    " Verify the identity now exists.
-    DATA(lo_resp) = ao_se2->getemailidentity(
-      iv_emailidentity = lv_identity ).
-
+    " Verify the identity exists and has the right type.
+    DATA(lo_resp) = ao_se2->getemailidentity( iv_emailidentity = lv_id ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_resp->get_identitytype( )
       exp = 'EMAIL_ADDRESS'
-      msg = |create_email_identity: identity type mismatch for { lv_identity }| ).
+      msg = |create_email_identity: type mismatch for { lv_id }| ).
 
-    " Tag it (the action method itself does not tag; we tag here for safety).
+    " Tag it (action method does not tag internally).
     TRY.
         tag_se2_resource(
-          |arn:aws:ses:{ lv_region }:{ lv_acct }:identity/{ lv_identity }| ).
+          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:identity/{ lv_id }| ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
     " Cleanup.
-    ao_se2->deleteemailidentity( iv_emailidentity = lv_identity ).
+    ao_se2->deleteemailidentity( iv_emailidentity = lv_id ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: create_contact_list
-  " Creates a brand-new contact list, verifies existence, then deletes it.
+  " Because the sandbox allows only 1 list, this test must:
+  "   1. Delete the shared list.
+  "   2. Call the action method to create a new list with a different name.
+  "   3. Verify the new list exists.
+  "   4. Delete the new list.
+  "   5. Recreate the shared list so subsequent tests are unaffected.
   " =========================================================================
   METHOD create_contact_list.
-    DATA(lv_sfx)  = get_uuid_suffix( ).
-    DATA(lv_list) = |se2-cl-{ lv_sfx }|.
+    " Step 1 – tear down the shared list (with its contacts).
+    TRY.
+        DATA(lo_cts) = ao_se2->listcontacts( iv_contactlistname = av_contact_list ).
+        LOOP AT lo_cts->get_contacts( ) INTO DATA(lo_ct).
+          TRY.
+              ao_se2->deletecontact(
+                iv_contactlistname = av_contact_list
+                iv_emailaddress    = lo_ct->get_emailaddress( ) ).
+            CATCH /aws1/cx_rt_generic.
+          ENDTRY.
+        ENDLOOP.
+      CATCH /aws1/cx_rt_generic.
+    ENDTRY.
+    TRY.
+        ao_se2->deletecontactlist( iv_contactlistname = av_contact_list ).
+      CATCH /aws1/cx_se2notfoundexception.
+    ENDTRY.
 
-    DATA(lv_region) = ao_session->get_region( ).
-    DATA(lv_acct)   = ao_session->get_account_id( ).
+    " Step 2 – choose a fresh name and call the action method under test.
+    DATA(lv_new_list) = |se2-cl-{ uuid_suffix( ) }|.
+    ao_se2_actions->create_contact_list( lv_new_list ).
 
-    " Call the action method under test.
-    ao_se2_actions->create_contact_list( lv_list ).
-
-    " Verify it exists by describing it.
-    DATA(lo_resp) = ao_se2->getcontactlist(
-      iv_contactlistname = lv_list ).
-
+    " Step 3 – verify the new list was created.
+    DATA(lo_resp) = ao_se2->getcontactlist( iv_contactlistname = lv_new_list ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_resp->get_contactlistname( )
-      exp = lv_list
-      msg = |create_contact_list: list name mismatch| ).
+      exp = lv_new_list
+      msg = 'create_contact_list: list name mismatch' ).
 
-    " Tag for safety.
+    " Tag it.
     TRY.
         tag_se2_resource(
-          |arn:aws:ses:{ lv_region }:{ lv_acct }:contact-list/{ lv_list }| ).
+          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:contact-list/{ lv_new_list }| ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " Cleanup – delete so we stay within the sandbox quota.
-    ao_se2->deletecontactlist( iv_contactlistname = lv_list ).
+    " Step 4 – delete the newly created list.
+    ao_se2->deletecontactlist( iv_contactlistname = lv_new_list ).
+
+    " Step 5 – restore the shared list so subsequent tests work.
+    ensure_contact_list( ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: create_email_template
-  " Creates a fresh template, verifies name, then deletes it.
+  " Creates a fresh template, verifies it, cleans up.
   " =========================================================================
   METHOD create_email_template.
-    DATA(lv_sfx)  = get_uuid_suffix( ).
-    DATA(lv_tmpl) = |se2-tmpl-{ lv_sfx }|.
+    DATA(lv_tmpl) = |se2-tmpl-{ uuid_suffix( ) }|.
 
-    DATA(lv_region) = ao_session->get_region( ).
-    DATA(lv_acct)   = ao_session->get_account_id( ).
-
-    " Call the action method under test.
     ao_se2_actions->create_email_template(
       iv_template_name = lv_tmpl
       iv_subject       = 'Test subject'
       iv_html          = '<p>Test HTML</p>'
       iv_text          = 'Test text' ).
 
-    " Verify the template was created.
-    DATA(lo_resp) = ao_se2->getemailtemplate(
-      iv_templatename = lv_tmpl ).
-
+    DATA(lo_resp) = ao_se2->getemailtemplate( iv_templatename = lv_tmpl ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_resp->get_templatename( )
       exp = lv_tmpl
-      msg = |create_email_template: template name mismatch| ).
+      msg = 'create_email_template: name mismatch' ).
 
-    " Tag for safety.
     TRY.
         tag_se2_resource(
-          |arn:aws:ses:{ lv_region }:{ lv_acct }:template/{ lv_tmpl }| ).
+          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:template/{ lv_tmpl }| ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    " Cleanup.
     ao_se2->deleteemailtemplate( iv_templatename = lv_tmpl ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: create_contact
-  " Adds a simulator contact to the shared list, verifies presence, removes it.
+  " Adds a unique simulator contact to the shared list, verifies, removes.
   " =========================================================================
   METHOD create_contact.
-    DATA(lv_sfx)   = get_uuid_suffix( ).
-    " success+<tag>@simulator.amazonses.com is the SES mailbox-simulator pattern
-    " for a successful delivery; no verification needed.
-    DATA(lv_email) = |success+ct{ lv_sfx }@simulator.amazonses.com|.
+    DATA(lv_email) = |success+ct{ uuid_suffix( ) }@simulator.amazonses.com|.
 
-    " Call the action method under test.
     ao_se2_actions->create_contact(
       iv_contact_list_name = av_contact_list
       iv_email_address     = lv_email ).
 
-    " Verify the contact exists in the list.
-    DATA(lo_resp)  = ao_se2->listcontacts( iv_contactlistname = av_contact_list ).
-    DATA lv_found  TYPE abap_bool VALUE abap_false.
+    DATA(lo_resp) = ao_se2->listcontacts( iv_contactlistname = av_contact_list ).
+    DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lo_resp->get_contacts( ) INTO DATA(lo_ct).
       IF lo_ct->get_emailaddress( ) = lv_email.
         lv_found = abap_true.
@@ -381,7 +339,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       act = lv_found
       msg = |create_contact: { lv_email } not found in list| ).
 
-    " Cleanup.
     ao_se2->deletecontact(
       iv_contactlistname = av_contact_list
       iv_emailaddress    = lv_email ).
@@ -390,73 +347,56 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
   " =========================================================================
   " TEST: send_email
-  " Uses the SES mailbox simulator address as BOTH sender and recipient.
-  " The simulator is pre-verified in every SES account so no manual
-  " verification is required, and the send must succeed (not just be
-  " "rejected" with a partial pass).
+  " Uses the SES simulator as both sender and recipient – pre-verified,
+  " no manual confirmation needed.  The action must not raise any exception.
   " =========================================================================
   METHOD send_email.
-    " Call the action method under test.
-    " FROM = simulator address (pre-verified), TO = simulator success address.
-    DATA lo_resp TYPE REF TO /aws1/cl_se2sendemailresponse.
-
-    " We call the underlying SDK directly via sendemail so we can inspect the
-    " MessageId returned.  The action wrapper method does not expose EXPORTING
-    " oo_result, so we verify through the SDK after calling the wrapper.
     ao_se2_actions->send_email(
-      iv_from_email_address = cv_simulator_addr
-      iv_to_email_address   = cv_simulator_addr
+      iv_from_email_address = cv_sim_addr
+      iv_to_email_address   = cv_sim_addr
       iv_subject            = 'ABAP SDK unit test – send_email'
-      iv_html_body          = '<p>Unit test email</p>'
-      iv_text_body          = 'Unit test email' ).
+      iv_html_body          = '<p>Unit test</p>'
+      iv_text_body          = 'Unit test' ).
 
-    " If no exception was raised the operation succeeded.
-    " (The action raises any non-MessageRejected errors, so reaching here
-    " means the SDK accepted the message.)
     cl_abap_unit_assert=>assert_true(
       act = abap_true
-      msg = 'send_email: operation should complete without exception' ).
+      msg = 'send_email: must complete without exception' ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: send_email_template
-  " Uses the shared template and simulator address for a fully verified send.
+  " Uses the shared template and simulator address.
+  " Ensures the simulator contact exists in the list first.
   " =========================================================================
   METHOD send_email_template.
-    " Ensure the simulator address is in the shared list (seeded in setup,
-    " but guard against it being removed by another test).
     TRY.
         ao_se2->createcontact(
           iv_contactlistname = av_contact_list
-          iv_emailaddress    = cv_simulator_addr ).
+          iv_emailaddress    = cv_sim_addr ).
       CATCH /aws1/cx_se2alreadyexistsex.
     ENDTRY.
 
-    " Call the action method under test.
     ao_se2_actions->send_email_template(
-      iv_from_email_address = cv_simulator_addr
-      iv_to_email_address   = cv_simulator_addr
+      iv_from_email_address = cv_sim_addr
+      iv_to_email_address   = cv_sim_addr
       iv_template_name      = av_template_name
       iv_template_data      = '{"name":"ABAP Tester"}'
       iv_contact_list_name  = av_contact_list ).
 
-    " Reaching here without exception means the operation succeeded.
     cl_abap_unit_assert=>assert_true(
       act = abap_true
-      msg = 'send_email_template: operation should complete without exception' ).
+      msg = 'send_email_template: must complete without exception' ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: list_contacts
-  " Inserts a unique contact, calls list_contacts, verifies it is present.
+  " Inserts a unique contact, calls list_contacts, verifies it is returned.
   " =========================================================================
   METHOD list_contacts.
-    DATA(lv_sfx)   = get_uuid_suffix( ).
-    DATA(lv_email) = |success+lc{ lv_sfx }@simulator.amazonses.com|.
+    DATA(lv_email) = |success+lc{ uuid_suffix( ) }@simulator.amazonses.com|.
 
-    " Ensure the contact exists.
     TRY.
         ao_se2->createcontact(
           iv_contactlistname = av_contact_list
@@ -464,7 +404,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_se2alreadyexistsex.
     ENDTRY.
 
-    " Call the action method under test.
     DATA lo_result TYPE REF TO /aws1/cl_se2listcontactsrsp.
     ao_se2_actions->list_contacts(
       EXPORTING iv_contact_list_name = av_contact_list
@@ -474,7 +413,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       act = lo_result
       msg = 'list_contacts: result must not be null' ).
 
-    " Verify the freshly created contact appears in the result.
     DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lo_result->get_contacts( ) INTO DATA(lo_ct).
       IF lo_ct->get_emailaddress( ) = lv_email.
@@ -485,9 +423,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |list_contacts: { lv_email } must appear in the list| ).
+      msg = |list_contacts: { lv_email } must appear in the result| ).
 
-    " Cleanup.
     ao_se2->deletecontact(
       iv_contactlistname = av_contact_list
       iv_emailaddress    = lv_email ).
@@ -496,47 +433,49 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
   " =========================================================================
   " TEST: delete_contact_list
-  " Uses the dedicated av_del_list (created in class_setup).
-  " Verifies the list is gone after calling the action method.
-  " If the dedicated list was already deleted by a previous test run that
-  " did not clean up, we re-create it here.
+  " Because the sandbox allows only 1 list, this test:
+  "   1. Uses the shared list (already exists from class_setup).
+  "   2. Calls the action method to delete it.
+  "   3. Verifies it is gone via GetContactList -> NotFoundException.
+  "   4. Recreates the shared list so subsequent tests work.
   " =========================================================================
   METHOD delete_contact_list.
-    " Make absolutely sure the list exists before we try to delete it.
+    " Make sure the shared list exists before we try to delete it.
     TRY.
-        ao_se2->createcontactlist( iv_contactlistname = av_del_list ).
-        TRY.
-            tag_se2_resource(
-              |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:contact-list/{ av_del_list }| ).
-          CATCH /aws1/cx_rt_generic.
-        ENDTRY.
+        ao_se2->createcontactlist( iv_contactlistname = av_contact_list ).
+        tag_se2_resource(
+          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:contact-list/{ av_contact_list }| ).
       CATCH /aws1/cx_se2alreadyexistsex.
-        " Already exists from class_setup or a re-run.
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
+        " Fine – it was created in class_setup.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_pre).
         cl_abap_unit_assert=>fail(
-          msg = |delete_contact_list: cannot create prerequisite list: { lo_ex->get_text( ) }| ).
+          msg = |delete_contact_list: cannot ensure list exists: { lo_pre->get_text( ) }| ).
     ENDTRY.
 
     " Call the action method under test.
-    ao_se2_actions->delete_contact_list( av_del_list ).
+    ao_se2_actions->delete_contact_list( av_contact_list ).
 
-    " Verify the list is gone.
+    " Verify it is gone.
     TRY.
-        ao_se2->getcontactlist( iv_contactlistname = av_del_list ).
+        ao_se2->getcontactlist( iv_contactlistname = av_contact_list ).
         cl_abap_unit_assert=>fail(
-          msg = |delete_contact_list: list { av_del_list } should be deleted| ).
+          msg = |delete_contact_list: list should be gone| ).
       CATCH /aws1/cx_se2notfoundexception.
         " Expected – list was successfully deleted.
     ENDTRY.
+
+    " Restore the shared list so subsequent tests are not broken.
+    ensure_contact_list( ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: delete_email_template
   " Uses the dedicated av_del_template (created in class_setup).
+  " Recreates it in case a prior run left it deleted.
   " =========================================================================
   METHOD delete_email_template.
-    " Make absolutely sure the template exists.
+    " Ensure the template exists.
     TRY.
         ao_se2->createemailtemplate(
           iv_templatename    = av_del_template
@@ -550,10 +489,9 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           CATCH /aws1/cx_rt_generic.
         ENDTRY.
       CATCH /aws1/cx_se2alreadyexistsex.
-        " Already there from class_setup.
       CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         cl_abap_unit_assert=>fail(
-          msg = |delete_email_template: cannot create prerequisite template: { lo_ex->get_text( ) }| ).
+          msg = |delete_email_template: cannot create prerequisite: { lo_ex->get_text( ) }| ).
     ENDTRY.
 
     " Call the action method under test.
@@ -563,7 +501,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     TRY.
         ao_se2->getemailtemplate( iv_templatename = av_del_template ).
         cl_abap_unit_assert=>fail(
-          msg = |delete_email_template: template { av_del_template } should be deleted| ).
+          msg = |delete_email_template: { av_del_template } should be deleted| ).
       CATCH /aws1/cx_se2notfoundexception.
         " Expected.
     ENDTRY.
@@ -575,30 +513,23 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
   " Creates a dedicated identity, deletes it, verifies it is gone.
   " =========================================================================
   METHOD delete_email_identity.
-    DATA(lv_sfx)      = get_uuid_suffix( ).
-    DATA(lv_identity) = |se2del{ lv_sfx }@example.com|.
+    DATA(lv_id) = |se2del{ uuid_suffix( ) }@example.com|.
 
-    DATA(lv_region) = ao_session->get_region( ).
-    DATA(lv_acct)   = ao_session->get_account_id( ).
-
-    " Create the identity that we will delete.
+    " Create with the convert_test tag at the API level.
     DATA lt_tags TYPE /aws1/cl_se2tag=>tt_taglist.
-    APPEND NEW /aws1/cl_se2tag(
-      iv_key   = 'convert_test'
-      iv_value = 'true' ) TO lt_tags.
-
+    APPEND NEW /aws1/cl_se2tag( iv_key = 'convert_test' iv_value = 'true' ) TO lt_tags.
     ao_se2->createemailidentity(
-      iv_emailidentity = lv_identity
+      iv_emailidentity = lv_id
       it_tags          = lt_tags ).
 
     " Call the action method under test.
-    ao_se2_actions->delete_email_identity( lv_identity ).
+    ao_se2_actions->delete_email_identity( lv_id ).
 
     " Verify it is gone.
     TRY.
-        ao_se2->getemailidentity( iv_emailidentity = lv_identity ).
+        ao_se2->getemailidentity( iv_emailidentity = lv_id ).
         cl_abap_unit_assert=>fail(
-          msg = |delete_email_identity: { lv_identity } should be deleted| ).
+          msg = |delete_email_identity: { lv_id } should be deleted| ).
       CATCH /aws1/cx_se2notfoundexception.
         " Expected.
     ENDTRY.
@@ -607,30 +538,20 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
   " =========================================================================
   " TEST: get_email_identity
-  " Creates a dedicated identity, calls get_email_identity, asserts the
-  " identity type is EMAIL_ADDRESS, then cleans up.
+  " Creates a dedicated identity, calls get_email_identity, verifies type.
   " =========================================================================
   METHOD get_email_identity.
-    DATA(lv_sfx)      = get_uuid_suffix( ).
-    DATA(lv_identity) = |se2get{ lv_sfx }@example.com|.
+    DATA(lv_id) = |se2get{ uuid_suffix( ) }@example.com|.
 
-    DATA(lv_region) = ao_session->get_region( ).
-    DATA(lv_acct)   = ao_session->get_account_id( ).
-
-    " Create with tags at the API level.
     DATA lt_tags TYPE /aws1/cl_se2tag=>tt_taglist.
-    APPEND NEW /aws1/cl_se2tag(
-      iv_key   = 'convert_test'
-      iv_value = 'true' ) TO lt_tags.
-
+    APPEND NEW /aws1/cl_se2tag( iv_key = 'convert_test' iv_value = 'true' ) TO lt_tags.
     ao_se2->createemailidentity(
-      iv_emailidentity = lv_identity
+      iv_emailidentity = lv_id
       it_tags          = lt_tags ).
 
-    " Call the action method under test.
     DATA lo_result TYPE REF TO /aws1/cl_se2getemailidresponse.
     ao_se2_actions->get_email_identity(
-      EXPORTING iv_email_identity = lv_identity
+      EXPORTING iv_email_identity = lv_id
       IMPORTING oo_result         = lo_result ).
 
     cl_abap_unit_assert=>assert_bound(
@@ -640,25 +561,21 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_result->get_identitytype( )
       exp = 'EMAIL_ADDRESS'
-      msg = |get_email_identity: identity type must be EMAIL_ADDRESS| ).
+      msg = 'get_email_identity: identity type must be EMAIL_ADDRESS' ).
 
-    " Cleanup.
-    ao_se2->deleteemailidentity( iv_emailidentity = lv_identity ).
+    ao_se2->deleteemailidentity( iv_emailidentity = lv_id ).
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: send_bulk_email
-  " Sends a bulk email to two simulator recipients using the shared template
-  " and the simulator sender.  Asserts each entry's status is SUCCESS.
+  " Sends a templated bulk email to two simulator recipients.
+  " Asserts that every BulkEmailEntryResult has status SUCCESS.
   " =========================================================================
   METHOD send_bulk_email.
-    DATA(lv_sfx1) = get_uuid_suffix( ).
-    DATA(lv_sfx2) = get_uuid_suffix( ).
-    DATA(lv_r1)   = |success+be1{ lv_sfx1 }@simulator.amazonses.com|.
-    DATA(lv_r2)   = |success+be2{ lv_sfx2 }@simulator.amazonses.com|.
+    DATA(lv_r1) = |success+be1{ uuid_suffix( ) }@simulator.amazonses.com|.
+    DATA(lv_r2) = |success+be2{ uuid_suffix( ) }@simulator.amazonses.com|.
 
-    " Build the BulkEmailEntry list – one entry per recipient.
     DATA lt_to1 TYPE /aws1/cl_se2emailaddresslist_w=>tt_emailaddresslist.
     APPEND NEW /aws1/cl_se2emailaddresslist_w( iv_value = lv_r1 ) TO lt_to1.
 
@@ -667,41 +584,35 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
     DATA lt_entries TYPE /aws1/cl_se2bulkemailentry=>tt_bulkemailentrylist.
     APPEND NEW /aws1/cl_se2bulkemailentry(
-      io_destination = NEW /aws1/cl_se2destination(
-        it_toaddresses = lt_to1 ) ) TO lt_entries.
+      io_destination = NEW /aws1/cl_se2destination( it_toaddresses = lt_to1 ) ) TO lt_entries.
     APPEND NEW /aws1/cl_se2bulkemailentry(
-      io_destination = NEW /aws1/cl_se2destination(
-        it_toaddresses = lt_to2 ) ) TO lt_entries.
+      io_destination = NEW /aws1/cl_se2destination( it_toaddresses = lt_to2 ) ) TO lt_entries.
 
-    " Call the action method under test.
     DATA lo_result TYPE REF TO /aws1/cl_se2sendbulkemailrsp.
     ao_se2_actions->send_bulk_email(
       EXPORTING
-        iv_from_address  = cv_simulator_addr
+        iv_from_address  = cv_sim_addr
         iv_template_name = av_template_name
         iv_template_data = '{"name":"Bulk Tester"}'
         it_bulk_entries  = lt_entries
       IMPORTING
         oo_result = lo_result ).
 
-    " The operation must return a result object.
     cl_abap_unit_assert=>assert_bound(
       act = lo_result
       msg = 'send_bulk_email: result must not be null' ).
 
-    " There must be exactly one result per entry.
     DATA(lt_results) = lo_result->get_bulkemailentryresults( ).
     cl_abap_unit_assert=>assert_equals(
       act = lines( lt_results )
       exp = 2
       msg = 'send_bulk_email: must return one result per entry' ).
 
-    " Every result must report SUCCESS (not FAILED).
-    LOOP AT lt_results INTO DATA(lo_entry_result).
+    LOOP AT lt_results INTO DATA(lo_er).
       cl_abap_unit_assert=>assert_equals(
-        act = lo_entry_result->get_status( )
+        act = lo_er->get_status( )
         exp = 'SUCCESS'
-        msg = |send_bulk_email: entry status must be SUCCESS, got { lo_entry_result->get_status( ) }| ).
+        msg = |send_bulk_email: entry status must be SUCCESS, got { lo_er->get_status( ) }| ).
     ENDLOOP.
   ENDMETHOD.
 
