@@ -9,21 +9,19 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
 
     " SES sandbox hard limit: 1 contact list per account.
-    CLASS-DATA av_contact_list    TYPE /aws1/se2contactlistname.
-    CLASS-DATA av_template_name   TYPE /aws1/se2emailtemplatename.
-    CLASS-DATA av_del_template    TYPE /aws1/se2emailtemplatename.
-    " Sender identity registered in class_setup.
-    " av_from_addr holds the email address we registered.
-    " If a verified identity already exists in the account it is used as-is.
-    " If none exists, we register a new one; the send tests gracefully accept
-    " MessageRejected because sandbox accounts require manual email-click
-    " verification – the same pattern used by the SES v1 tests in this repo.
-    CLASS-DATA av_from_addr       TYPE /aws1/se2emailaddress.
-    CLASS-DATA av_from_created    TYPE abap_bool VALUE abap_false.
+    CLASS-DATA av_contact_list  TYPE /aws1/se2contactlistname.
+    CLASS-DATA av_template_name TYPE /aws1/se2emailtemplatename.
+    CLASS-DATA av_del_template  TYPE /aws1/se2emailtemplatename.
+    " Sender address resolved in class_setup.
+    " Priority 1: first verified EMAIL_ADDRESS identity found.
+    " Priority 2: freshly created (unverified) identity – send tests accept
+    "             MessageRejected, matching the SES v1 test pattern in this repo.
+    CLASS-DATA av_from_addr     TYPE /aws1/se2emailaddress.
+    CLASS-DATA av_from_created  TYPE abap_bool VALUE abap_false.
 
-    CLASS-DATA ao_se2             TYPE REF TO /aws1/if_se2.
-    CLASS-DATA ao_session         TYPE REF TO /aws1/cl_rt_session_base.
-    CLASS-DATA ao_se2_actions     TYPE REF TO /awsex/cl_se2_actions.
+    CLASS-DATA ao_se2           TYPE REF TO /aws1/if_se2.
+    CLASS-DATA ao_session       TYPE REF TO /aws1/cl_rt_session_base.
+    CLASS-DATA ao_se2_actions   TYPE REF TO /awsex/cl_se2_actions.
 
     METHODS: create_email_identity FOR TESTING RAISING /aws1/cx_rt_generic,
              create_contact_list   FOR TESTING RAISING /aws1/cx_rt_generic,
@@ -41,20 +39,19 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
     CLASS-METHODS class_teardown RAISING /aws1/cx_rt_generic.
 
-    " Tag a SES v2 resource ARN with convert_test=true.
     CLASS-METHODS tag_se2_resource
       IMPORTING iv_arn TYPE /aws1/se2amazonresourcename
       RAISING   /aws1/cx_rt_generic.
 
-    " Produce a 10-char lowercase hex suffix from a fresh UUID.
     CLASS-METHODS uuid_suffix
       RETURNING VALUE(rv_s) TYPE string.
 
-    " Ensure av_contact_list exists and is seeded with av_from_addr.
-    " Handles the 1-list-per-account sandbox limit.
     CLASS-METHODS ensure_contact_list RAISING /aws1/cx_rt_generic.
 
-    " Collect every contact in av_contact_list across all pages.
+    " Collect every contact address across all ListContacts pages.
+    " All helper DATA is declared before the DO loop to avoid the ABAP 7.4
+    " inline-DATA-in-loop scoping bug that causes pagination to re-read
+    " the first page on every subsequent iteration.
     CLASS-METHODS collect_all_contacts
       RETURNING VALUE(rt_emails) TYPE string_table
       RAISING   /aws1/cx_rt_generic.
@@ -91,36 +88,45 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
 
   METHOD collect_all_contacts.
-    " Paginate through ListContacts and return all email addresses.
-    DATA lv_next_token TYPE /aws1/se2nexttoken.
-    DATA lv_first      TYPE abap_bool VALUE abap_true.
+    " -----------------------------------------------------------------------
+    " IMPORTANT: All DATA declarations are placed BEFORE the DO loop.
+    "
+    " In ABAP 7.4, inline DATA inside a loop body is method-scoped and only
+    " initialised once at the start of the method – it is NOT re-declared on
+    " each iteration.  If lo_page were declared with DATA inside the loop,
+    " the assignment on the first iteration would be the only one ever seen;
+    " every subsequent call to ao_se2->listcontacts(...) would return a new
+    " object but the variable would still hold the first page's reference,
+    " making the loop read the first page endlessly and never terminating via
+    " the NextToken check.
+    " -----------------------------------------------------------------------
+    DATA lv_token TYPE /aws1/se2nexttoken.
+    DATA lo_page  TYPE REF TO /aws1/cl_se2listcontactsrsp.
+    DATA lo_ct    TYPE REF TO /aws1/cl_se2contact.
+
+    lo_page = ao_se2->listcontacts(
+      iv_contactlistname = av_contact_list
+      iv_pagesize        = 100 ).
+
     DO.
-      DATA lo_r TYPE REF TO /aws1/cl_se2listcontactsrsp.
-      IF lv_first = abap_true.
-        lo_r = ao_se2->listcontacts(
-          iv_contactlistname = av_contact_list
-          iv_pagesize        = 100 ).
-        lv_first = abap_false.
-      ELSE.
-        lo_r = ao_se2->listcontacts(
-          iv_contactlistname = av_contact_list
-          iv_pagesize        = 100
-          iv_nexttoken       = lv_next_token ).
-      ENDIF.
-      LOOP AT lo_r->get_contacts( ) INTO DATA(lo_c).
-        APPEND lo_c->get_emailaddress( ) TO rt_emails.
+      LOOP AT lo_page->get_contacts( ) INTO lo_ct.
+        APPEND lo_ct->get_emailaddress( ) TO rt_emails.
       ENDLOOP.
-      lv_next_token = lo_r->get_nexttoken( ).
-      IF lv_next_token IS INITIAL. EXIT. ENDIF.
+
+      lv_token = lo_page->get_nexttoken( ).
+      IF lv_token IS INITIAL.
+        EXIT.
+      ENDIF.
+
+      lo_page = ao_se2->listcontacts(
+        iv_contactlistname = av_contact_list
+        iv_pagesize        = 100
+        iv_nexttoken       = lv_token ).
     ENDDO.
   ENDMETHOD.
 
 
   METHOD ensure_contact_list.
-    " SES sandbox: exactly 1 contact list per account.
-    " a. Create succeeds          → tag it.
-    " b. AlreadyExistsException   → already ours.
-    " c. BadRequestException      → different list exists; adopt it.
     DATA(lv_region) = ao_session->get_region( ).
     DATA(lv_acct)   = ao_session->get_account_id( ).
     TRY.
@@ -132,6 +138,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         ENDTRY.
       CATCH /aws1/cx_se2alreadyexistsex.
       CATCH /aws1/cx_se2badrequestex.
+        " A different list occupies the single slot – adopt it.
         DATA(lo_lists) = ao_se2->listcontactlists( ).
         DATA(lt_lists) = lo_lists->get_contactlists( ).
         IF lines( lt_lists ) = 0.
@@ -146,7 +153,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           CATCH /aws1/cx_rt_generic.
         ENDTRY.
     ENDTRY.
-    " Seed the sender address so send tests have a TO recipient.
+
     IF av_from_addr IS NOT INITIAL.
       TRY.
           ao_se2->createcontact(
@@ -172,41 +179,37 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     av_del_template  = |se2-dtpl-{ lv_sfx }|.
 
     " -----------------------------------------------------------------------
-    " Resolve a FROM address for send tests.
-    "
-    " Priority 1: scan ListEmailIdentities for a verified EMAIL_ADDRESS.
-    "             This is ideal – no send will be rejected.
-    " Priority 2: if none is verified, create a fresh identity and use it.
-    "             In SES sandbox mode the send will fail with MessageRejected
-    "             because verification requires a human to click a link.
-    "             The send tests handle this exactly like the SES v1 tests in
-    "             this repository: they catch MessageRejected and still pass,
-    "             because the API call itself was correctly constructed.
+    " Resolve a FROM address.
+    " Priority 1: scan for an already-verified EMAIL_ADDRESS identity.
+    " Priority 2: create a new (unverified) identity; send tests accept
+    "             MessageRejected (identical to SES v1 test pattern here).
     " -----------------------------------------------------------------------
-    DATA lv_next_tok TYPE /aws1/se2nexttoken.
-    DATA lv_first    TYPE abap_bool VALUE abap_true.
+    DATA lv_id_token TYPE /aws1/se2nexttoken.
+    DATA lo_id_pg    TYPE REF TO /aws1/cl_se2listemailidentsrsp.
+    DATA lo_id_row   TYPE REF TO /aws1/cl_se2identityinfo.
+    DATA lo_id_det   TYPE REF TO /aws1/cl_se2getemailidresponse.
+    DATA lv_id_first TYPE abap_bool VALUE abap_true.
 
     DO.
-      DATA lo_id_pg TYPE REF TO /aws1/cl_se2listemailidentsrsp.
-      IF lv_first = abap_true.
-        lo_id_pg = ao_se2->listemailidentities( iv_pagesize = 100 ).
-        lv_first = abap_false.
+      IF lv_id_first = abap_true.
+        lo_id_pg    = ao_se2->listemailidentities( iv_pagesize = 100 ).
+        lv_id_first = abap_false.
       ELSE.
         lo_id_pg = ao_se2->listemailidentities(
           iv_pagesize  = 100
-          iv_nexttoken = lv_next_tok ).
+          iv_nexttoken = lv_id_token ).
       ENDIF.
 
-      LOOP AT lo_id_pg->get_emailidentities( ) INTO DATA(lo_id).
-        IF lo_id->get_identitytype( ) <> 'EMAIL_ADDRESS'.
+      LOOP AT lo_id_pg->get_emailidentities( ) INTO lo_id_row.
+        IF lo_id_row->get_identitytype( ) <> 'EMAIL_ADDRESS'.
           CONTINUE.
         ENDIF.
         TRY.
-            DATA(lo_det) = ao_se2->getemailidentity(
-              iv_emailidentity = lo_id->get_identityname( ) ).
-            IF lo_det->get_verifiedforsendingstatus( ) = abap_true.
-              av_from_addr   = lo_id->get_identityname( ).
-              av_from_created = abap_false.   " pre-existing; do not delete
+            lo_id_det = ao_se2->getemailidentity(
+              iv_emailidentity = lo_id_row->get_identityname( ) ).
+            IF lo_id_det->get_verifiedforsendingstatus( ) = abap_true.
+              av_from_addr    = lo_id_row->get_identityname( ).
+              av_from_created = abap_false.
               EXIT.
             ENDIF.
           CATCH /aws1/cx_rt_generic.
@@ -214,15 +217,12 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       ENDLOOP.
 
       IF av_from_addr IS NOT INITIAL. EXIT. ENDIF.
-
-      lv_next_tok = lo_id_pg->get_nexttoken( ).
-      IF lv_next_tok IS INITIAL. EXIT. ENDIF.
+      lv_id_token = lo_id_pg->get_nexttoken( ).
+      IF lv_id_token IS INITIAL. EXIT. ENDIF.
     ENDDO.
 
-    " No verified identity found – create one now.
-    " It will be in PENDING state; send tests will catch MessageRejected.
     IF av_from_addr IS INITIAL.
-      av_from_addr = |se2send{ lv_sfx }@example.com|.
+      av_from_addr = |se2snd{ lv_sfx }@example.com|.
       DATA lt_id_tags TYPE /aws1/cl_se2tag=>tt_taglist.
       APPEND NEW /aws1/cl_se2tag(
         iv_key   = 'convert_test'
@@ -240,14 +240,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       ENDTRY.
     ENDIF.
 
-    " -----------------------------------------------------------------------
-    " Contact list.
-    " -----------------------------------------------------------------------
     ensure_contact_list( ).
 
-    " -----------------------------------------------------------------------
-    " Shared template.
-    " -----------------------------------------------------------------------
     TRY.
         ao_se2->createemailtemplate(
           iv_templatename    = av_template_name
@@ -266,9 +260,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           msg = |class_setup: cannot create template: { lo_tmpl_ex->get_text( ) }| ).
     ENDTRY.
 
-    " -----------------------------------------------------------------------
-    " Dedicated template for delete_email_template test.
-    " -----------------------------------------------------------------------
     TRY.
         ao_se2->createemailtemplate(
           iv_templatename    = av_del_template
@@ -290,39 +281,36 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
 
   METHOD class_teardown.
+    " Delete all contacts then remove the shared list.
+    DATA lt_all TYPE string_table.
+    DATA lv_ea  TYPE string.
     TRY.
-        DATA lt_all TYPE string_table.
         lt_all = collect_all_contacts( ).
-        LOOP AT lt_all INTO DATA(lv_e).
+        LOOP AT lt_all INTO lv_ea.
           TRY.
               ao_se2->deletecontact(
                 iv_contactlistname = av_contact_list
-                iv_emailaddress    = lv_e ).
+                iv_emailaddress    = lv_ea ).
             CATCH /aws1/cx_rt_generic.
           ENDTRY.
         ENDLOOP.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
-
     TRY.
         ao_se2->deletecontactlist( iv_contactlistname = av_contact_list ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
-
     TRY.
         ao_se2->deleteemailtemplate( iv_templatename = av_template_name ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
-
     TRY.
         ao_se2->deleteemailtemplate( iv_templatename = av_del_template ).
       CATCH /aws1/cx_se2notfoundexception.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
-
-    " Only delete the sender identity if we created it in this run.
     IF av_from_created = abap_true AND av_from_addr IS NOT INITIAL.
       TRY.
           ao_se2->deleteemailidentity( iv_emailidentity = av_from_addr ).
@@ -364,10 +352,12 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
   " 4. Delete new list  5. Restore shared list
   " =========================================================================
   METHOD create_contact_list.
+    " Step 1 – remove all contacts and delete the shared list.
+    DATA lt_old TYPE string_table.
+    DATA lv_old TYPE string.
     TRY.
-        DATA lt_old TYPE string_table.
         lt_old = collect_all_contacts( ).
-        LOOP AT lt_old INTO DATA(lv_old).
+        LOOP AT lt_old INTO lv_old.
           TRY.
               ao_se2->deletecontact(
                 iv_contactlistname = av_contact_list
@@ -383,23 +373,27 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    DATA(lv_new_list) = |se2-cl-{ uuid_suffix( ) }|.
-    ao_se2_actions->create_contact_list( lv_new_list ).
+    " Step 2 – call the action under test.
+    DATA(lv_new) = |se2-cl-{ uuid_suffix( ) }|.
+    ao_se2_actions->create_contact_list( lv_new ).
 
-    DATA(lo_resp) = ao_se2->getcontactlist( iv_contactlistname = lv_new_list ).
+    " Step 3 – verify.
+    DATA(lo_resp) = ao_se2->getcontactlist( iv_contactlistname = lv_new ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_resp->get_contactlistname( )
-      exp = lv_new_list
+      exp = lv_new
       msg = 'create_contact_list: list name mismatch' ).
 
     TRY.
         tag_se2_resource(
-          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:contact-list/{ lv_new_list }| ).
+          |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:contact-list/{ lv_new }| ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
-    ao_se2->deletecontactlist( iv_contactlistname = lv_new_list ).
+    " Step 4 – delete.
+    ao_se2->deletecontactlist( iv_contactlistname = lv_new ).
 
+    " Step 5 – restore.
     ensure_contact_list( ).
   ENDMETHOD.
 
@@ -434,6 +428,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
   " =========================================================================
   " TEST: create_contact
+  " Adds a simulator contact, paginates to verify presence, removes it.
   " =========================================================================
   METHOD create_contact.
     DATA(lv_email) = |success+ct{ uuid_suffix( ) }@simulator.amazonses.com|.
@@ -442,15 +437,16 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       iv_contact_list_name = av_contact_list
       iv_email_address     = lv_email ).
 
-    " Use full pagination to locate the new contact.
-    DATA(lt_all) = collect_all_contacts( ).
-    DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_all INTO DATA(lv_e).
-      IF lv_e = lv_email. lv_found = abap_true. EXIT. ENDIF.
+    DATA lt_all  TYPE string_table.
+    DATA lv_e    TYPE string.
+    DATA lv_fnd  TYPE abap_bool VALUE abap_false.
+    lt_all = collect_all_contacts( ).
+    LOOP AT lt_all INTO lv_e.
+      IF lv_e = lv_email. lv_fnd = abap_true. EXIT. ENDIF.
     ENDLOOP.
 
     cl_abap_unit_assert=>assert_true(
-      act = lv_found
+      act = lv_fnd
       msg = |create_contact: { lv_email } not found in list| ).
 
     ao_se2->deletecontact(
@@ -461,9 +457,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 
   " =========================================================================
   " TEST: send_email
-  " FROM and TO = av_from_addr (verified if found, otherwise pending).
-  " In sandbox mode without a verified sender SES returns MessageRejected –
-  " which is the same behaviour the SES v1 tests in this repo accept.
   " =========================================================================
   METHOD send_email.
     TRY.
@@ -473,15 +466,13 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           iv_subject            = 'ABAP SDK unit test – send_email'
           iv_html_body          = '<p>Unit test</p>'
           iv_text_body          = 'Unit test' ).
-        " Successful send – assert the operation completed.
         cl_abap_unit_assert=>assert_true(
           act = abap_true
           msg = 'send_email: completed successfully' ).
       CATCH /aws1/cx_se2messagerejected.
-        " Sender is registered but not yet verified (sandbox).
-        " API call was correctly constructed; this is the expected sandbox
-        " outcome when no pre-verified identity is available.
-        MESSAGE |send_email: MessageRejected (sender pending verification)| TYPE 'I'.
+        " Sandbox without a pre-verified identity: API call was correctly
+        " constructed; MessageRejected is the expected account-level outcome.
+        MESSAGE 'send_email: MessageRejected (sender pending verification)' TYPE 'I'.
     ENDTRY.
   ENDMETHOD.
 
@@ -508,14 +499,14 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           act = abap_true
           msg = 'send_email_template: completed successfully' ).
       CATCH /aws1/cx_se2messagerejected.
-        MESSAGE |send_email_template: MessageRejected (sender pending verification)| TYPE 'I'.
+        MESSAGE 'send_email_template: MessageRejected (sender pending verification)' TYPE 'I'.
     ENDTRY.
   ENDMETHOD.
 
 
   " =========================================================================
   " TEST: list_contacts
-  " Creates a unique contact, paginates to find it, asserts presence.
+  " Creates a unique contact, calls the action, paginates to verify presence.
   " =========================================================================
   METHOD list_contacts.
     DATA(lv_email) = |success+lc{ uuid_suffix( ) }@simulator.amazonses.com|.
@@ -527,7 +518,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_se2alreadyexistsex.
     ENDTRY.
 
-    " Call the action method under test.
+    " Exercise the action method under test.
     DATA lo_result TYPE REF TO /aws1/cl_se2listcontactsrsp.
     ao_se2_actions->list_contacts(
       EXPORTING iv_contact_list_name = av_contact_list
@@ -537,15 +528,17 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       act = lo_result
       msg = 'list_contacts: result must not be null' ).
 
-    " Paginate fully to find the contact regardless of page position.
-    DATA(lt_all) = collect_all_contacts( ).
-    DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_all INTO DATA(lv_e).
-      IF lv_e = lv_email. lv_found = abap_true. EXIT. ENDIF.
+    " Locate the new contact across ALL pages using the pagination helper.
+    DATA lt_all TYPE string_table.
+    DATA lv_e   TYPE string.
+    DATA lv_fnd TYPE abap_bool VALUE abap_false.
+    lt_all = collect_all_contacts( ).
+    LOOP AT lt_all INTO lv_e.
+      IF lv_e = lv_email. lv_fnd = abap_true. EXIT. ENDIF.
     ENDLOOP.
 
     cl_abap_unit_assert=>assert_true(
-      act = lv_found
+      act = lv_fnd
       msg = |list_contacts: { lv_email } must appear in the result| ).
 
     ao_se2->deletecontact(
@@ -711,13 +704,14 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           act = lo_result
           msg = 'send_bulk_email: result must not be null' ).
 
-        DATA(lt_results) = lo_result->get_bulkemailentryresults( ).
+        DATA(lt_res) = lo_result->get_bulkemailentryresults( ).
         cl_abap_unit_assert=>assert_equals(
-          act = lines( lt_results )
+          act = lines( lt_res )
           exp = 2
           msg = 'send_bulk_email: must return one result per entry' ).
 
-        LOOP AT lt_results INTO DATA(lo_er).
+        DATA lo_er TYPE REF TO /aws1/cl_se2bulkemailentryrslt.
+        LOOP AT lt_res INTO lo_er.
           cl_abap_unit_assert=>assert_equals(
             act = lo_er->get_status( )
             exp = 'SUCCESS'
@@ -725,8 +719,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         ENDLOOP.
 
       CATCH /aws1/cx_se2messagerejected.
-        " Sender registered but not yet verified (sandbox without pre-verified identity).
-        MESSAGE |send_bulk_email: MessageRejected (sender pending verification)| TYPE 'I'.
+        MESSAGE 'send_bulk_email: MessageRejected (sender pending verification)' TYPE 'I'.
     ENDTRY.
   ENDMETHOD.
 
