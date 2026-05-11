@@ -161,10 +161,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = av_thing_arn
       msg = |Failed to create shared IoT thing { av_thing_name }| ).
 
-    ao_iot->tagresource(
-      iv_resourcearn = av_thing_arn
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+    " Note: IoT things are cleaned up by name in class_teardown.
 
     " ────────────────────────────────────────────────────────────────────────
     " 4. Dedicated thing for delete_thing test
@@ -174,10 +171,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_del_thing_rsp->get_thingarn( )
       msg = |Failed to create delete-test thing { av_del_thing }| ).
 
-    ao_iot->tagresource(
-      iv_resourcearn = lo_del_thing_rsp->get_thingarn( )
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+    " Note: IoT things are cleaned up by name in class_teardown.
 
     " ────────────────────────────────────────────────────────────────────────
     " 5. Shared certificate for attach/detach tests
@@ -343,13 +337,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_desc->get_thingname( )
       msg = |Thing { lv_name } should have been created| ).
 
-    TRY.
-        ao_iot->tagresource(
-          iv_resourcearn = lo_desc->get_thingarn( )
-          it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-            ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
-      CATCH /aws1/cx_rt_generic.
-    ENDTRY.
     ao_iot->deletething( iv_thingname = lv_name ).
   ENDMETHOD.
 
