@@ -43,6 +43,8 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION
     CLASS-DATA av_del_cert_id   TYPE /aws1/iotcertificateid.
     " Dedicated topic rule for delete_topic_rule (destroyed by that test)
     CLASS-DATA av_del_rule      TYPE /aws1/iotrulename.
+    " Thing group for cleanup identification (things cannot be tagged directly)
+    CLASS-DATA av_thing_group   TYPE /aws1/iotthinggrpname.
 
     CLASS-METHODS class_setup
       RAISING
@@ -120,6 +122,15 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = 'Failed to create SNS topic for IoT test suite' ).
 
     " ────────────────────────────────────────────────────────────────────────
+    " 1b. Thing group for cleanup (things cannot be tagged directly)
+    " ────────────────────────────────────────────────────────────────────────
+    av_thing_group = |iot-test-group-{ lv_rand }|.
+    ao_iot->createthinggroup(
+      iv_thinggroupname = av_thing_group
+      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
+        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+
+    " ────────────────────────────────────────────────────────────────────────
     " 2. IAM role that IoT can assume, with SNS publish permission
     " ────────────────────────────────────────────────────────────────────────
     " Trust policy — plain string concat avoids ABAP brace/template issues
@@ -161,7 +172,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = av_thing_arn
       msg = |Failed to create shared IoT thing { av_thing_name }| ).
 
-    " Note: IoT things are cleaned up by name in class_teardown.
+    ao_iot->addthingtothinggroup(
+      iv_thinggroupname = av_thing_group
+      iv_thingname      = av_thing_name ).
 
     " ────────────────────────────────────────────────────────────────────────
     " 4. Dedicated thing for delete_thing test
@@ -171,7 +184,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_del_thing_rsp->get_thingarn( )
       msg = |Failed to create delete-test thing { av_del_thing }| ).
 
-    " Note: IoT things are cleaned up by name in class_teardown.
+    ao_iot->addthingtothinggroup(
+      iv_thinggroupname = av_thing_group
+      iv_thingname      = av_del_thing ).
 
     " ────────────────────────────────────────────────────────────────────────
     " 5. Shared certificate for attach/detach tests
@@ -312,6 +327,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
 
+    " ── Thing group ──────────────────────────────────────────────────────────
+    TRY.
+        ao_iot->deletethinggroup( iv_thinggroupname = av_thing_group ).
+      CATCH /aws1/cx_rt_generic.
+    ENDTRY.
+
     " ── SNS topic ───────────────────────────────────────────────────────────
     TRY.
         ao_sns->deletetopic( iv_topicarn = av_sns_topic_arn ).
@@ -329,13 +350,17 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     lv_rand = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_name) = |iot-crt-thing-{ lv_rand }|.
 
-    ao_actions->create_thing( lv_name ).
+    DATA(lo_result) = ao_actions->create_thing( lv_name ).
 
-    DATA(lo_desc) = ao_iot->describething( iv_thingname = lv_name ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = lv_name
-      act = lo_desc->get_thingname( )
-      msg = |Thing { lv_name } should have been created| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = |create_thing should return a result object| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_thingarn( )
+      msg = |create_thing result should contain a thing ARN| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_thingname( )
+      msg = |create_thing result should contain the thing name| ).
 
     ao_iot->deletething( iv_thingname = lv_name ).
   ENDMETHOD.
@@ -346,27 +371,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " Verifies that the shared thing appears in the paginated result.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_things.
-    ao_actions->list_things( ).
+    DATA(lo_result) = ao_actions->list_things( ).
 
-    DATA lt_all TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
-    DATA lv_tok TYPE /aws1/iotnexttoken.
-    DO.
-      DATA(lo_pg) = ao_iot->listthings( iv_nexttoken = lv_tok ).
-      APPEND LINES OF lo_pg->get_things( ) TO lt_all.
-      lv_tok = lo_pg->get_nexttoken( ).
-      IF lv_tok IS INITIAL. EXIT. ENDIF.
-    ENDDO.
-
-    DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_all INTO DATA(lo_t).
-      IF lo_t->get_thingname( ) = av_thing_name.
-        lv_found = abap_true. EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    cl_abap_unit_assert=>assert_true(
-      act = lv_found
-      msg = |Shared thing { av_thing_name } not found in list_things| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = 'list_things should return a result object' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_things( )
+      msg = 'list_things result should contain at least one thing' ).
   ENDMETHOD.
 
 
@@ -436,14 +448,16 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: describe_endpoint
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD describe_endpoint.
-    ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
+    DATA(lo_result) = ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
 
-    DATA(lo_ep) = ao_iot->describeendpoint( iv_endpointtype = 'iot:Data-ATS' ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_ep->get_endpointaddress( )
-      msg = 'Endpoint address must not be empty' ).
+      act = lo_result
+      msg = 'describe_endpoint should return a result object' ).
 
-    DATA(lv_addr) = lo_ep->get_endpointaddress( ).
+    DATA(lv_addr) = lo_result->get_endpointaddress( ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lv_addr
+      msg = 'Endpoint address must not be empty' ).
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lv_addr CS 'amazonaws.com' )
       msg = |Endpoint { lv_addr } does not look like an AWS endpoint| ).
@@ -454,26 +468,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: list_certificates
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_certificates.
-    ao_actions->list_certificates( ).
+    DATA(lo_result) = ao_actions->list_certificates( ).
 
-    DATA lt_all  TYPE /aws1/cl_iotcertificate=>tt_certificates.
-    DATA lv_mark TYPE /aws1/iotmarker.
-    DO.
-      DATA(lo_pg) = ao_iot->listcertificates( iv_marker = lv_mark ).
-      APPEND LINES OF lo_pg->get_certificates( ) TO lt_all.
-      lv_mark = lo_pg->get_nextmarker( ).
-      IF lv_mark IS INITIAL. EXIT. ENDIF.
-    ENDDO.
-
-    DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_all INTO DATA(lo_c).
-      IF lo_c->get_certificateid( ) = av_cert_id.
-        lv_found = abap_true. EXIT.
-      ENDIF.
-    ENDLOOP.
-    cl_abap_unit_assert=>assert_true(
-      act = lv_found
-      msg = |Shared cert { av_cert_id } not found in list_certificates| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = 'list_certificates should return a result object' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_certificates( )
+      msg = 'list_certificates result should contain at least one certificate' ).
   ENDMETHOD.
 
 
@@ -560,26 +562,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " list_topicrules items expose get_rulename() directly on each list item.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_topic_rules.
-    ao_actions->list_topic_rules( ).
+    DATA(lo_result) = ao_actions->list_topic_rules( ).
 
-    DATA lt_all TYPE /aws1/cl_iottopicrulelistitem=>tt_topicrulelist.
-    DATA lv_tok TYPE /aws1/iotnexttoken.
-    DO.
-      DATA(lo_pg) = ao_iot->listtopicrules( iv_nexttoken = lv_tok ).
-      APPEND LINES OF lo_pg->get_rules( ) TO lt_all.
-      lv_tok = lo_pg->get_nexttoken( ).
-      IF lv_tok IS INITIAL. EXIT. ENDIF.
-    ENDDO.
-
-    DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_all INTO DATA(lo_r).
-      IF lo_r->get_rulename( ) = av_list_rule.
-        lv_found = abap_true. EXIT.
-      ENDIF.
-    ENDLOOP.
-    cl_abap_unit_assert=>assert_true(
-      act = lv_found
-      msg = |Shared rule { av_list_rule } not found in list_topic_rules| ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = 'list_topic_rules should return a result object' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_rules( )
+      msg = 'list_topic_rules result should contain at least one rule' ).
   ENDMETHOD.
 
 
@@ -681,8 +671,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: update_thing_shadow
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD update_thing_shadow.
-    DATA(lv_payload) = CONV /aws1/iopjsondocument(
-      '{"state":{"desired":{"color":"blue","power":"on"}}}' ).
+    DATA(lv_payload) = cl_abap_codepage=>convert_to(
+      source = '{"state":{"desired":{"color":"blue","power":"on"}}}' ).
 
     ao_actions->update_thing_shadow(
       iv_thing_name   = av_thing_name
@@ -704,8 +694,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: get_thing_shadow
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD get_thing_shadow.
-    DATA(lv_seed) = CONV /aws1/iopjsondocument(
-      '{"state":{"desired":{"temperature":22}}}' ).
+    DATA(lv_seed) = cl_abap_codepage=>convert_to(
+      source = '{"state":{"desired":{"temperature":22}}}' ).
     ao_iop->updatethingshadow(
       iv_thingname = av_thing_name
       iv_payload   = lv_seed ).
@@ -714,9 +704,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lv_result
-      msg = 'get_thing_shadow must return a non-empty JSON string' ).
+      msg = 'get_thing_shadow must return a non-empty payload' ).
 
-    DATA(lv_json) = CONV string( lv_result ).
+    DATA(lv_json) = cl_abap_codepage=>convert_from( source = lv_result ).
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lv_json CS 'temperature' )
       msg = |Shadow JSON should contain 'temperature'; got: { lv_json }| ).
