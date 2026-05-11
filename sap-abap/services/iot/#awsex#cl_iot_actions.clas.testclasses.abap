@@ -350,17 +350,18 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     lv_rand = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_name) = |iot-crt-thing-{ lv_rand }|.
 
-    ao_actions->create_thing( lv_name ).
+    DATA(lo_result) = ao_actions->create_thing( lv_name ).
 
-    " Verify the thing was actually created
-    DATA(lo_desc) = ao_iot->describething( iv_thingname = lv_name ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = 'create_thing should return a result object' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_thingarn( )
+      msg = 'create_thing result should contain a thing ARN' ).
     cl_abap_unit_assert=>assert_equals(
       exp = lv_name
-      act = lo_desc->get_thingname( )
-      msg = |create_thing action should have created thing { lv_name }| ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_desc->get_thingarn( )
-      msg = |Created thing should have an ARN| ).
+      act = lo_result->get_thingname( )
+      msg = |create_thing result should contain thing name { lv_name }| ).
 
     ao_iot->deletething( iv_thingname = lv_name ).
   ENDMETHOD.
@@ -371,24 +372,21 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " Verifies that the shared thing appears in the paginated result.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_things.
-    " Call the action method (verifies no exception thrown)
-    ao_actions->list_things( ).
+    DATA(lt_things) = ao_actions->list_things( ).
 
-    " Independently verify things exist via direct SDK call
-    DATA(lo_pg) = ao_iot->listthings( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_pg->get_things( )
-      msg = 'list_things: at least one thing should exist' ).
+      act = lt_things
+      msg = 'list_things should return at least one thing' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_pg->get_things( ) INTO DATA(lo_t).
+    LOOP AT lt_things INTO DATA(lo_t).
       IF lo_t->get_thingname( ) = av_thing_name.
         lv_found = abap_true. EXIT.
       ENDIF.
     ENDLOOP.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Shared thing { av_thing_name } not found in list_things| ).
+      msg = |Shared thing { av_thing_name } not found in list_things result| ).
   ENDMETHOD.
 
 
@@ -396,34 +394,25 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: create_keys_and_certificate
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD create_keys_and_certificate.
-    " Collect existing cert IDs before calling the action
-    DATA lt_before TYPE string_table.
-    DATA(lo_list_before) = ao_iot->listcertificates( ).
-    LOOP AT lo_list_before->get_certificates( ) INTO DATA(lo_cb).
-      APPEND lo_cb->get_certificateid( ) TO lt_before.
-    ENDLOOP.
-
-    " Exercise the action method
-    ao_actions->create_keys_and_certificate( ).
-
-    " Find the newly created certificate by diffing the list
-    DATA lv_new_cert_id TYPE /aws1/iotcertificateid.
-    DATA(lo_list_after) = ao_iot->listcertificates( ).
-    LOOP AT lo_list_after->get_certificates( ) INTO DATA(lo_ca).
-      DATA(lv_id) = lo_ca->get_certificateid( ).
-      READ TABLE lt_before WITH KEY table_line = lv_id TRANSPORTING NO FIELDS.
-      IF sy-subrc <> 0.
-        lv_new_cert_id = lv_id.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
+    DATA(lo_result) = ao_actions->create_keys_and_certificate( ).
 
     cl_abap_unit_assert=>assert_not_initial(
-      act = lv_new_cert_id
-      msg = 'create_keys_and_certificate should have created a new certificate' ).
+      act = lo_result
+      msg = 'create_keys_and_certificate should return a result' ).
+
+    DATA(lv_cert_id) = lo_result->get_certificateid( ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lv_cert_id
+      msg = 'Certificate ID should not be empty' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_certificatearn( )
+      msg = 'Certificate ARN should not be empty' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_certificatepem( )
+      msg = 'Certificate PEM should not be empty' ).
 
     " Verify it is ACTIVE
-    DATA(lo_desc) = ao_iot->describecertificate( iv_certificateid = lv_new_cert_id ).
+    DATA(lo_desc) = ao_iot->describecertificate( iv_certificateid = lv_cert_id ).
     cl_abap_unit_assert=>assert_equals(
       exp = 'ACTIVE'
       act = lo_desc->get_certificatedescription( )->get_status( )
@@ -431,9 +420,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     " Clean up
     ao_iot->updatecertificate(
-      iv_certificateid = lv_new_cert_id
+      iv_certificateid = lv_cert_id
       iv_newstatus     = 'INACTIVE' ).
-    ao_iot->deletecertificate( iv_certificateid = lv_new_cert_id ).
+    ao_iot->deletecertificate( iv_certificateid = lv_cert_id ).
   ENDMETHOD.
 
 
@@ -470,12 +459,13 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: describe_endpoint
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD describe_endpoint.
-    " Call the action method (verifies no exception thrown)
-    ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
+    DATA(lo_result) = ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
 
-    " Independently verify via direct SDK call
-    DATA(lo_ep) = ao_iot->describeendpoint( iv_endpointtype = 'iot:Data-ATS' ).
-    DATA(lv_addr) = lo_ep->get_endpointaddress( ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result
+      msg = 'describe_endpoint should return a result object' ).
+
+    DATA(lv_addr) = lo_result->get_endpointaddress( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = lv_addr
       msg = 'Endpoint address must not be empty' ).
@@ -489,24 +479,21 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: list_certificates
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_certificates.
-    " Call the action method (verifies no exception thrown)
-    ao_actions->list_certificates( ).
+    DATA(lt_certs) = ao_actions->list_certificates( ).
 
-    " Independently verify via direct SDK call
-    DATA(lo_pg) = ao_iot->listcertificates( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_pg->get_certificates( )
-      msg = 'list_certificates: at least one certificate should exist' ).
+      act = lt_certs
+      msg = 'list_certificates should return at least one certificate' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_pg->get_certificates( ) INTO DATA(lo_c).
+    LOOP AT lt_certs INTO DATA(lo_c).
       IF lo_c->get_certificateid( ) = av_cert_id.
         lv_found = abap_true. EXIT.
       ENDIF.
     ENDLOOP.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Shared cert { av_cert_id } not found in list_certificates| ).
+      msg = |Shared cert { av_cert_id } not found in list_certificates result| ).
   ENDMETHOD.
 
 
@@ -593,24 +580,21 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " list_topicrules items expose get_rulename() directly on each list item.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_topic_rules.
-    " Call the action method (verifies no exception thrown)
-    ao_actions->list_topic_rules( ).
+    DATA(lt_rules) = ao_actions->list_topic_rules( ).
 
-    " Independently verify via direct SDK call
-    DATA(lo_pg) = ao_iot->listtopicrules( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_pg->get_rules( )
-      msg = 'list_topic_rules: at least one rule should exist' ).
+      act = lt_rules
+      msg = 'list_topic_rules should return at least one rule' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_pg->get_rules( ) INTO DATA(lo_r).
+    LOOP AT lt_rules INTO DATA(lo_r).
       IF lo_r->get_rulename( ) = av_list_rule.
         lv_found = abap_true. EXIT.
       ENDIF.
     ENDLOOP.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Shared rule { av_list_rule } not found in list_topic_rules| ).
+      msg = |Shared rule { av_list_rule } not found in list_topic_rules result| ).
   ENDMETHOD.
 
 

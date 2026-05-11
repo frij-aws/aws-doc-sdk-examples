@@ -9,6 +9,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
     METHODS create_thing
       IMPORTING
         iv_thing_name TYPE /aws1/iotthingname
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotcreatethingrsp
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -16,6 +18,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
         /aws1/cx_rt_technical_generic.
 
     METHODS list_things
+      RETURNING
+        VALUE(ot_things) TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -23,6 +27,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
         /aws1/cx_rt_technical_generic.
 
     METHODS create_keys_and_certificate
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotcrekeysandcertrsp
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -43,6 +49,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
       IMPORTING
         iv_endpoint_type TYPE /aws1/iotendpointtype
                               DEFAULT 'iot:Data-ATS'
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotdescrendptresponse
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -50,6 +58,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
         /aws1/cx_rt_technical_generic.
 
     METHODS list_certificates
+      RETURNING
+        VALUE(ot_certs) TYPE /aws1/cl_iotcertificate=>tt_certificates
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -88,6 +98,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
         /aws1/cx_rt_technical_generic.
 
     METHODS list_topic_rules
+      RETURNING
+        VALUE(ot_rules) TYPE /aws1/cl_iottopicrulelistitem=>tt_topicrulelist
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -97,6 +109,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
     METHODS search_index
       IMPORTING
         iv_query_string TYPE /aws1/iotquerystring
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotsearchindexrsp
       RAISING
         /aws1/cx_iotclientexc
         /aws1/cx_iotserverexc
@@ -163,7 +177,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.create_thing]
     TRY.
-        DATA(oo_result) = lo_iot->creatething(
+        oo_result = lo_iot->creatething(
           " For example, iv_thing_name = 'my-iot-thing'
           iv_thingname = iv_thing_name
         ).
@@ -184,22 +198,21 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.list_things]
     TRY.
-        DATA lt_things TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
         DATA lv_next_token TYPE /aws1/iotnexttoken.
 
         " Paginate through all things
         DO.
-          DATA(oo_result) = lo_iot->listthings(
+          DATA(lo_page) = lo_iot->listthings(
             iv_nexttoken = lv_next_token
           ).
-          APPEND LINES OF oo_result->get_things( ) TO lt_things.
-          lv_next_token = oo_result->get_nexttoken( ).
+          APPEND LINES OF lo_page->get_things( ) TO ot_things.
+          lv_next_token = lo_page->get_nexttoken( ).
           IF lv_next_token IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( lt_things ) } IoT things| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_things ) } IoT things| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'E'.
     ENDTRY.
@@ -214,7 +227,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.create_keys_and_certificate]
     TRY.
-        DATA(oo_result) = lo_iot->createkeysandcertificate(
+        oo_result = lo_iot->createkeysandcertificate(
           iv_setasactive = abap_true
         ).
         MESSAGE |Certificate created: { oo_result->get_certificateid( ) }| TYPE 'I'.
@@ -255,7 +268,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.describe_endpoint]
     TRY.
-        DATA(oo_result) = lo_iot->describeendpoint(
+        oo_result = lo_iot->describeendpoint(
           " For example, iv_endpoint_type = 'iot:Data-ATS'
           iv_endpointtype = iv_endpoint_type
         ).
@@ -275,22 +288,21 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.list_certificates]
     TRY.
-        DATA lt_certs TYPE /aws1/cl_iotcertificate=>tt_certificates.
         DATA lv_marker TYPE /aws1/iotmarker.
 
         " Paginate through all certificates
         DO.
-          DATA(oo_result) = lo_iot->listcertificates(
+          DATA(lo_page) = lo_iot->listcertificates(
             iv_marker = lv_marker
           ).
-          APPEND LINES OF oo_result->get_certificates( ) TO lt_certs.
-          lv_marker = oo_result->get_nextmarker( ).
+          APPEND LINES OF lo_page->get_certificates( ) TO ot_certs.
+          lv_marker = lo_page->get_nextmarker( ).
           IF lv_marker IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( lt_certs ) } IoT certificates| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_certs ) } IoT certificates| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'E'.
     ENDTRY.
@@ -398,22 +410,21 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.list_topic_rules]
     TRY.
-        DATA lt_rules TYPE /aws1/cl_iottopicrulelistitem=>tt_topicrulelist.
         DATA lv_next_token TYPE /aws1/iotnexttoken.
 
         " Paginate through all topic rules
         DO.
-          DATA(oo_result) = lo_iot->listtopicrules(
+          DATA(lo_page) = lo_iot->listtopicrules(
             iv_nexttoken = lv_next_token
           ).
-          APPEND LINES OF oo_result->get_rules( ) TO lt_rules.
-          lv_next_token = oo_result->get_nexttoken( ).
+          APPEND LINES OF lo_page->get_rules( ) TO ot_rules.
+          lv_next_token = lo_page->get_nexttoken( ).
           IF lv_next_token IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( lt_rules ) } IoT topic rules| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_rules ) } IoT topic rules| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'E'.
     ENDTRY.
@@ -428,7 +439,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
     " snippet-start:[iot.abapv1.search_index]
     TRY.
-        DATA(oo_result) = lo_iot->searchindex(
+        oo_result = lo_iot->searchindex(
           " For example, iv_query_string = 'thingName:my-thing*'
           iv_querystring = iv_query_string
         ).
