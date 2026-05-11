@@ -371,14 +371,24 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " Verifies that the shared thing appears in the paginated result.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_things.
-    DATA(lo_result) = ao_actions->list_things( ).
+    " Call the action method (verifies no exception thrown)
+    ao_actions->list_things( ).
 
+    " Independently verify things exist via direct SDK call
+    DATA(lo_pg) = ao_iot->listthings( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result
-      msg = 'list_things should return a result object' ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_things( )
-      msg = 'list_things result should contain at least one thing' ).
+      act = lo_pg->get_things( )
+      msg = 'list_things: at least one thing should exist' ).
+
+    DATA lv_found TYPE abap_bool VALUE abap_false.
+    LOOP AT lo_pg->get_things( ) INTO DATA(lo_t).
+      IF lo_t->get_thingname( ) = av_thing_name.
+        lv_found = abap_true. EXIT.
+      ENDIF.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_true(
+      act = lv_found
+      msg = |Shared thing { av_thing_name } not found in list_things| ).
   ENDMETHOD.
 
 
@@ -448,13 +458,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: describe_endpoint
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD describe_endpoint.
-    DATA(lo_result) = ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
+    " Call the action method (verifies no exception thrown)
+    ao_actions->describe_endpoint( iv_endpoint_type = 'iot:Data-ATS' ).
 
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result
-      msg = 'describe_endpoint should return a result object' ).
-
-    DATA(lv_addr) = lo_result->get_endpointaddress( ).
+    " Independently verify via direct SDK call
+    DATA(lo_ep) = ao_iot->describeendpoint( iv_endpointtype = 'iot:Data-ATS' ).
+    DATA(lv_addr) = lo_ep->get_endpointaddress( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = lv_addr
       msg = 'Endpoint address must not be empty' ).
@@ -468,14 +477,24 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: list_certificates
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_certificates.
-    DATA(lo_result) = ao_actions->list_certificates( ).
+    " Call the action method (verifies no exception thrown)
+    ao_actions->list_certificates( ).
 
+    " Independently verify via direct SDK call
+    DATA(lo_pg) = ao_iot->listcertificates( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result
-      msg = 'list_certificates should return a result object' ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_certificates( )
-      msg = 'list_certificates result should contain at least one certificate' ).
+      act = lo_pg->get_certificates( )
+      msg = 'list_certificates: at least one certificate should exist' ).
+
+    DATA lv_found TYPE abap_bool VALUE abap_false.
+    LOOP AT lo_pg->get_certificates( ) INTO DATA(lo_c).
+      IF lo_c->get_certificateid( ) = av_cert_id.
+        lv_found = abap_true. EXIT.
+      ENDIF.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_true(
+      act = lv_found
+      msg = |Shared cert { av_cert_id } not found in list_certificates| ).
   ENDMETHOD.
 
 
@@ -562,14 +581,24 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " list_topicrules items expose get_rulename() directly on each list item.
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD list_topic_rules.
-    DATA(lo_result) = ao_actions->list_topic_rules( ).
+    " Call the action method (verifies no exception thrown)
+    ao_actions->list_topic_rules( ).
 
+    " Independently verify via direct SDK call
+    DATA(lo_pg) = ao_iot->listtopicrules( ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result
-      msg = 'list_topic_rules should return a result object' ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_rules( )
-      msg = 'list_topic_rules result should contain at least one rule' ).
+      act = lo_pg->get_rules( )
+      msg = 'list_topic_rules: at least one rule should exist' ).
+
+    DATA lv_found TYPE abap_bool VALUE abap_false.
+    LOOP AT lo_pg->get_rules( ) INTO DATA(lo_r).
+      IF lo_r->get_rulename( ) = av_list_rule.
+        lv_found = abap_true. EXIT.
+      ENDIF.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_true(
+      act = lv_found
+      msg = |Shared rule { av_list_rule } not found in list_topic_rules| ).
   ENDMETHOD.
 
 
