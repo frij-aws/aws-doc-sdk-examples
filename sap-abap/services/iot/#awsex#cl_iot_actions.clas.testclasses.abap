@@ -44,7 +44,7 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION
     " Dedicated topic rule for delete_topic_rule (destroyed by that test)
     CLASS-DATA av_del_rule      TYPE /aws1/iotrulename.
     " Thing group for cleanup identification (things cannot be tagged directly)
-    CLASS-DATA av_thing_group   TYPE /aws1/iotthinggrpname.
+    CLASS-DATA av_thing_group   TYPE /aws1/iotthinggroupname.
 
     CLASS-METHODS class_setup
       RAISING
