@@ -185,7 +185,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_iotresrcalrdyexistsex.
         MESSAGE |IoT thing { iv_thing_name } already exists.| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_thing]
   ENDMETHOD.
@@ -214,7 +214,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
         MESSAGE |Retrieved { lines( ot_things ) } IoT things| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_things]
   ENDMETHOD.
@@ -232,7 +232,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Certificate created: { oo_result->get_certificateid( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_keys_and_certificate]
   ENDMETHOD.
@@ -253,9 +253,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Principal { iv_principal } attached to thing { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Resource not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Resource not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.attach_thing_principal]
   ENDMETHOD.
@@ -275,7 +275,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         DATA(lv_endpoint_address) = oo_result->get_endpointaddress( ).
         MESSAGE |Endpoint address: { lv_endpoint_address }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.describe_endpoint]
   ENDMETHOD.
@@ -304,7 +304,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
         MESSAGE |Retrieved { lines( ot_certs ) } IoT certificates| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_certificates]
   ENDMETHOD.
@@ -325,9 +325,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Principal { iv_principal } detached from thing { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Resource not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Resource not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.detach_thing_principal]
   ENDMETHOD.
@@ -351,9 +351,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Certificate deleted: { iv_certificate_id }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Certificate not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Certificate not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_certificate]
   ENDMETHOD.
@@ -397,7 +397,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
       CATCH /aws1/cx_iotresrcalrdyexistsex.
         MESSAGE |Topic rule { iv_rule_name } already exists.| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_topic_rule]
   ENDMETHOD.
@@ -426,7 +426,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
         MESSAGE |Retrieved { lines( ot_rules ) } IoT topic rules| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_topic_rules]
   ENDMETHOD.
@@ -446,9 +446,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         DATA(lt_things) = oo_result->get_things( ).
         MESSAGE |Found { lines( lt_things ) } IoT things matching the query| TYPE 'I'.
       CATCH /aws1/cx_iotindexnotreadyex INTO DATA(lo_not_ready).
-        MESSAGE |IoT index not ready: { lo_not_ready->get_text( ) }| TYPE 'E'.
+        MESSAGE |IoT index not ready: { lo_not_ready->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.search_index]
   ENDMETHOD.
@@ -471,7 +471,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |IoT indexing configuration updated to REGISTRY mode| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.update_indexing_configuration]
   ENDMETHOD.
@@ -490,9 +490,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |IoT thing deleted: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Thing not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Thing not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_thing]
   ENDMETHOD.
@@ -511,7 +511,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Topic rule deleted: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_iotclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_topic_rule]
   ENDMETHOD.
@@ -532,9 +532,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Shadow updated for IoT thing: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iopresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Thing not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Thing not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iopclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iop.abapv1.update_thing_shadow]
   ENDMETHOD.
@@ -554,9 +554,9 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ov_shadow_json = oo_result->get_payload( ).
         MESSAGE |Shadow state for { iv_thing_name }: { ov_shadow_json }| TYPE 'I'.
       CATCH /aws1/cx_iopresourcenotfoundex INTO DATA(lo_notfound).
-        MESSAGE |Thing shadow not found: { lo_notfound->get_text( ) }| TYPE 'E'.
+        MESSAGE |Thing shadow not found: { lo_notfound->get_text( ) }| TYPE 'I'.
       CATCH /aws1/cx_iopclientexc INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'E'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[iop.abapv1.get_thing_shadow]
   ENDMETHOD.
