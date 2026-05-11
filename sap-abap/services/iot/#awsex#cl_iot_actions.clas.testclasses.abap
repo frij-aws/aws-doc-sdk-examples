@@ -396,32 +396,44 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 " TEST: create_keys_and_certificate
 " ═══════════════════════════════════════════════════════════════════════════
   METHOD create_keys_and_certificate.
-    DATA(lo_cert) = ao_iot->createkeysandcertificate( abap_true ).
+    " Collect existing cert IDs before calling the action
+    DATA lt_before TYPE string_table.
+    DATA(lo_list_before) = ao_iot->listcertificates( ).
+    LOOP AT lo_list_before->get_certificates( ) INTO DATA(lo_cb).
+      APPEND lo_cb->get_certificateid( ) TO lt_before.
+    ENDLOOP.
 
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_cert->get_certificateid( )
-      msg = 'Certificate ID should not be empty' ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_cert->get_certificatearn( )
-      msg = 'Certificate ARN should not be empty' ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_cert->get_certificatepem( )
-      msg = 'Certificate PEM should not be empty' ).
-
-    " Also exercise the action method code path
+    " Exercise the action method
     ao_actions->create_keys_and_certificate( ).
 
-    DATA(lo_desc) = ao_iot->describecertificate(
-      iv_certificateid = lo_cert->get_certificateid( ) ).
+    " Find the newly created certificate by diffing the list
+    DATA lv_new_cert_id TYPE /aws1/iotcertificateid.
+    DATA(lo_list_after) = ao_iot->listcertificates( ).
+    LOOP AT lo_list_after->get_certificates( ) INTO DATA(lo_ca).
+      DATA(lv_id) = lo_ca->get_certificateid( ).
+      READ TABLE lt_before WITH KEY table_line = lv_id TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        lv_new_cert_id = lv_id.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lv_new_cert_id
+      msg = 'create_keys_and_certificate should have created a new certificate' ).
+
+    " Verify it is ACTIVE
+    DATA(lo_desc) = ao_iot->describecertificate( iv_certificateid = lv_new_cert_id ).
     cl_abap_unit_assert=>assert_equals(
       exp = 'ACTIVE'
       act = lo_desc->get_certificatedescription( )->get_status( )
       msg = 'New certificate should be ACTIVE' ).
 
+    " Clean up
     ao_iot->updatecertificate(
-      iv_certificateid = lo_cert->get_certificateid( )
+      iv_certificateid = lv_new_cert_id
       iv_newstatus     = 'INACTIVE' ).
-    ao_iot->deletecertificate( iv_certificateid = lo_cert->get_certificateid( ) ).
+    ao_iot->deletecertificate( iv_certificateid = lv_new_cert_id ).
   ENDMETHOD.
 
 
