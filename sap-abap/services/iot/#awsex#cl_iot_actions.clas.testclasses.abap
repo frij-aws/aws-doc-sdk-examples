@@ -350,17 +350,17 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     lv_rand = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_name) = |iot-crt-thing-{ lv_rand }|.
 
-    DATA(lo_result) = ao_actions->create_thing( lv_name ).
+    ao_actions->create_thing( lv_name ).
 
+    " Verify the thing was actually created
+    DATA(lo_desc) = ao_iot->describething( iv_thingname = lv_name ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = lv_name
+      act = lo_desc->get_thingname( )
+      msg = |create_thing action should have created thing { lv_name }| ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result
-      msg = |create_thing should return a result object| ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_thingarn( )
-      msg = |create_thing result should contain a thing ARN| ).
-    cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_thingname( )
-      msg = |create_thing result should contain the thing name| ).
+      act = lo_desc->get_thingarn( )
+      msg = |Created thing should have an ARN| ).
 
     ao_iot->deletething( iv_thingname = lv_name ).
   ENDMETHOD.
