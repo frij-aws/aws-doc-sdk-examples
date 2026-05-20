@@ -66,7 +66,7 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION
     " --- Internal helpers ---
 
     " Create an IoT thing, fail the suite if it cannot be created.
-    " Tags the thing with convert_test using tagresource.
+    " Things are not taggable; tracked by naming convention (sap-iot-* prefix).
     CLASS-METHODS create_thing_internal
       IMPORTING
         iv_name        TYPE /aws1/iotthingname
@@ -262,26 +262,15 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_thing_internal.
+    " IoT Things do not support TagResource (only thinggroup, rule, cert-CA,
+    " policy etc. are taggable).  Things are tracked by naming convention:
+    " all test things are prefixed 'sap-iot-' and suffixed with av_suffix.
     DATA(lo_rsp) = ao_iot->creatething( iv_thingname = iv_name ).
     ov_arn = lo_rsp->get_thingarn( ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = ov_arn
       msg = |class_setup: failed to create thing { iv_name }| ).
-
-    " Tag the thing with convert_test using tagresource
-    TRY.
-        DATA lt_tags TYPE /aws1/cl_iottag=>tt_taglist.
-        APPEND NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' )
-          TO lt_tags.
-        ao_iot->tagresource(
-          iv_resourcearn = ov_arn
-          it_tags        = lt_tags ).
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_tag_ex).
-        " Tagging failure is non-fatal but surface the error
-        cl_abap_unit_assert=>fail(
-          msg = |class_setup: could not tag thing { iv_name }: { lo_tag_ex->get_text( ) }| ).
-    ENDTRY.
   ENDMETHOD.
 
 
@@ -369,9 +358,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       it_actions = lt_actions ).
 
     TRY.
+        " Topic rules support tagging at creation via iv_tags (URL-encoded)
         ao_iot->createtopicrule(
           iv_rulename         = iv_rule_name
-          io_topicrulepayload = lo_payload ).
+          io_topicrulepayload = lo_payload
+          iv_tags             = 'convert_test=true' ).
       CATCH /aws1/cx_iotresrcalrdyexistsex.
         " Already exists from a previous interrupted run — that's fine.
       CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
@@ -402,16 +393,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_result->get_thingarn( )
       msg = 'create_thing: ARN is empty' ).
 
-    " Tag and clean up
-    TRY.
-        DATA lt_tags TYPE /aws1/cl_iottag=>tt_taglist.
-        APPEND NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' )
-          TO lt_tags.
-        ao_iot->tagresource(
-          iv_resourcearn = lo_result->get_thingarn( )
-          it_tags        = lt_tags ).
-      CATCH /aws1/cx_rt_generic.
-    ENDTRY.
+    " Clean up the thing created by the action under test
     TRY.
         ao_iot->deletething( iv_thingname = lv_name ).
       CATCH /aws1/cx_rt_generic.
