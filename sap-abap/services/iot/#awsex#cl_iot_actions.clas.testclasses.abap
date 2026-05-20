@@ -595,7 +595,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = |Topic rule { lv_new_rule } not found after create_topic_rule| ).
 
     cl_abap_unit_assert=>assert_equals(
-      act = lo_rule_rsp->get_rulename( )
+      act = lo_rule_rsp->get_rule( )->get_rulename( )
       exp = lv_new_rule
       msg = |Rule name mismatch| ).
 
@@ -733,13 +733,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     ao_iot_actions->delete_topic_rule(
       iv_rule_name = av_del_rule_name ).
 
-    " Verify: gettopicrule must raise an error after deletion.
+    " Verify: gettopicrule must raise ResourceNotFoundException after deletion.
     DATA lv_deleted TYPE abap_bool VALUE abap_false.
     TRY.
         ao_iot->gettopicrule( iv_rulename = av_del_rule_name ).
-      CATCH /aws1/cx_iotclientexc.
-        lv_deleted = abap_true.
-      CATCH /aws1/cx_rt_generic.
+      CATCH /aws1/cx_iotresourcenotfoundex.
         lv_deleted = abap_true.
     ENDTRY.
 

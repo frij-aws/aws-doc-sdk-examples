@@ -97,11 +97,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_thing.
+    " snippet-start:[iot.abapv1.create_thing]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_thing]
     TRY.
         " iv_thing_name example: 'MyIoTThing'
         oo_result = lo_iot->creatething(
@@ -117,11 +116,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_things.
+    " snippet-start:[iot.abapv1.list_things]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_things]
     TRY.
         DATA lv_next_token TYPE /aws1/iotnexttoken.
         DO.
@@ -142,11 +140,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_keys_and_certificate.
+    " snippet-start:[iot.abapv1.create_keys_and_certificate]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_keys_and_certificate]
     TRY.
         oo_result = lo_iot->createkeysandcertificate(
           iv_setasactive = abap_true ).
@@ -159,11 +156,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD attach_thing_principal.
+    " snippet-start:[iot.abapv1.attach_thing_principal]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.attach_thing_principal]
     TRY.
         " iv_thing_name example: 'MyIoTThing'
         " iv_principal  example: 'arn:aws:iot:us-east-1:123456789012:cert/abc123'
@@ -181,11 +177,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD describe_endpoint.
+    " snippet-start:[iot.abapv1.describe_endpoint]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.describe_endpoint]
     TRY.
         " iv_endpoint_type example: 'iot:Data-ATS'
         DATA(lo_result) = lo_iot->describeendpoint(
@@ -200,11 +195,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_certificates.
+    " snippet-start:[iot.abapv1.list_certificates]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_certificates]
     TRY.
         DATA lv_marker TYPE /aws1/iotmarker.
         DO.
@@ -225,11 +219,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD detach_thing_principal.
+    " snippet-start:[iot.abapv1.detach_thing_principal]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.detach_thing_principal]
     TRY.
         " iv_thing_name example: 'MyIoTThing'
         " iv_principal  example: 'arn:aws:iot:us-east-1:123456789012:cert/abc123'
@@ -247,11 +240,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_certificate.
+    " snippet-start:[iot.abapv1.delete_certificate]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_certificate]
     TRY.
         " iv_certificate_id example: 'abc123def456...'
         " First deactivate the certificate before deleting it.
@@ -271,11 +263,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_topic_rule.
+    " snippet-start:[iot.abapv1.create_topic_rule]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_topic_rule]
     TRY.
         " iv_rule_name      example: 'MyTopicRule'
         " iv_topic          example: 'my/iot/topic'
@@ -307,11 +298,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_topic_rules.
+    " snippet-start:[iot.abapv1.list_topic_rules]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_topic_rules]
     TRY.
         DATA lv_next_token TYPE /aws1/iotnexttoken.
         DO.
@@ -332,11 +322,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD search_index.
+    " snippet-start:[iot.abapv1.search_index]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.search_index]
     TRY.
         " iv_query_string example: 'thingName:MyThing*'
         DATA(lo_result) = lo_iot->searchindex(
@@ -351,11 +340,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD update_indexing_configuration.
+    " snippet-start:[iot.abapv1.update_indexing_configuration]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.update_indexing_configuration]
     TRY.
         lo_iot->updateindexingconfiguration(
           io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
@@ -370,11 +358,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_thing.
+    " snippet-start:[iot.abapv1.delete_thing]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_thing]
     TRY.
         " iv_thing_name example: 'MyIoTThing'
         lo_iot->deletething(
@@ -390,11 +377,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_topic_rule.
+    " snippet-start:[iot.abapv1.delete_topic_rule]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_topic_rule]
     TRY.
         " iv_rule_name example: 'MyTopicRule'
         lo_iot->deletetopicrule(
@@ -408,11 +394,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD update_thing_shadow.
+    " snippet-start:[iot.abapv1.update_thing_shadow]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iop) = /aws1/cl_iop_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.update_thing_shadow]
     TRY.
         " iv_thing_name   example: 'MyIoTThing'
         " iv_shadow_state example: '{"state":{"reported":{"temperature":25}}}'
@@ -433,11 +418,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD get_thing_shadow.
+    " snippet-start:[iot.abapv1.get_thing_shadow]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iop) = /aws1/cl_iop_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.get_thing_shadow]
     TRY.
         " iv_thing_name example: 'MyIoTThing'
         DATA(lo_result) = lo_iop->getthingshadow(
@@ -445,7 +429,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ov_shadow = cl_abap_codepage=>convert_from(
           source   = lo_result->get_payload( )
           codepage = 'UTF-8' ).
-        MESSAGE |Shadow retrieved for thing: { iv_thing_name }| TYPE 'I'.
+        MESSAGE |Shadow for { iv_thing_name }: { ov_shadow }| TYPE 'I'.
       CATCH /aws1/cx_iopresourcenotfoundex.
         MESSAGE |Cannot get thing shadow. Resource not found.| TYPE 'I'.
       CATCH /aws1/cx_iopclientexc INTO DATA(lo_ex).
