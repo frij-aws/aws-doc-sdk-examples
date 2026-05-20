@@ -18,7 +18,6 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
 
     " Shared resources (non-mutating tests)
     CLASS-DATA av_thing_name      TYPE /aws1/iotthingname.
-    CLASS-DATA av_thing_arn       TYPE /aws1/iotthingarn.
     CLASS-DATA av_certificate_id  TYPE /aws1/iotcertificateid.
     CLASS-DATA av_certificate_arn TYPE /aws1/iotcertificatearn.
     CLASS-DATA av_sns_topic_arn   TYPE /aws1/snstopicarn.
@@ -26,11 +25,9 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-DATA av_iam_role_name   TYPE /aws1/iamrolenametype.
     CLASS-DATA av_iam_policy_name TYPE /aws1/iampolicynametype.
     CLASS-DATA av_rule_name       TYPE /aws1/iotrulename.
-    CLASS-DATA av_rule_arn        TYPE /aws1/iotrulearn.
 
     " Dedicated resources for mutating (delete) tests
     CLASS-DATA av_del_thing_name  TYPE /aws1/iotthingname.
-    CLASS-DATA av_del_thing_arn   TYPE /aws1/iotthingarn.
     CLASS-DATA av_del_cert_id     TYPE /aws1/iotcertificateid.
     CLASS-DATA av_del_cert_arn    TYPE /aws1/iotcertificatearn.
     CLASS-DATA av_del_rule_name   TYPE /aws1/iotrulename.
@@ -58,29 +55,28 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
     CLASS-METHODS class_teardown.
 
-    CLASS-METHODS tag_iot_resource
-      IMPORTING iv_arn TYPE /aws1/iotresourcearn
+    " Tag an IoT rule ARN with convert_test=true.
+    " Note: IoT Things (arn:...:thing/...) and regular Certificates
+    " (arn:...:cert/...) do NOT support tagresource and must not be tagged.
+    CLASS-METHODS tag_iot_rule
+      IMPORTING iv_rule_arn TYPE /aws1/iotrulearn
       RAISING   /aws1/cx_rt_generic.
-
-    CLASS-METHODS build_iot_tags
-      RETURNING VALUE(rt_tags) TYPE /aws1/cl_iottag=>tt_taglist.
 
 ENDCLASS.
 
 
 CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
-  METHOD build_iot_tags.
+  METHOD tag_iot_rule.
+    DATA lt_tags TYPE /aws1/cl_iottag=>tt_taglist.
     APPEND NEW /aws1/cl_iottag(
       iv_key   = cv_tag_key
-      iv_value = cv_tag_value ) TO rt_tags.
+      iv_value = cv_tag_value ) TO lt_tags.
+    ao_iot->tagresource(
+      iv_resourcearn = iv_rule_arn
+      it_tags        = lt_tags ).
   ENDMETHOD.
 
-  METHOD tag_iot_resource.
-    ao_iot->tagresource(
-      iv_resourcearn = iv_arn
-      it_tags        = build_iot_tags( ) ).
-  ENDMETHOD.
 
   METHOD class_setup.
     ao_session    = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
@@ -98,12 +94,10 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_thing_rsp) = ao_iot->creatething( iv_thingname = av_thing_name ).
     cl_abap_unit_assert=>assert_bound( act = lo_thing_rsp
       msg = |class_setup: failed to create shared thing| ).
-    av_thing_arn = lo_thing_rsp->get_thingarn( ).
-    cl_abap_unit_assert=>assert_not_initial( act = av_thing_arn
-      msg = |class_setup: shared thing ARN is empty| ).
-    tag_iot_resource( av_thing_arn ).
+    " IoT Things do not support tagresource; name prefix identifies test resources.
 
     " 2. Shared certificate (attached to shared thing)
+    " IoT regular certs (arn:...:cert/...) do not support tagresource.
     DATA(lo_cert_rsp) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound( act = lo_cert_rsp
       msg = |class_setup: failed to create shared certificate| ).
@@ -111,7 +105,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     av_certificate_arn = lo_cert_rsp->get_certificatearn( ).
     cl_abap_unit_assert=>assert_not_initial( act = av_certificate_id
       msg = |class_setup: shared certificate ID is empty| ).
-    tag_iot_resource( av_certificate_arn ).
     ao_iot->attachthingprincipal(
       iv_thingname = av_thing_name
       iv_principal = av_certificate_arn ).
@@ -157,6 +150,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     WAIT UP TO 10 SECONDS.
 
     " 5. Shared topic rule (list_topic_rules test)
+    " IoT Rules (arn:...:rule/...) DO support tagresource.
     av_rule_name = |SapAbapIotRule{ lv_uuid_string }|.
     TRANSLATE av_rule_name USING '- '.
     CONDENSE av_rule_name NO-GAPS.
@@ -171,22 +165,20 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
         iv_sql     = |SELECT * FROM 'iot/test/{ lv_uuid_string }'|
         it_actions = lt_act1 ) ).
     DATA(lo_rule_get) = ao_iot->gettopicrule( iv_rulename = av_rule_name ).
-    av_rule_arn = lo_rule_get->get_rulearn( ).
-    IF av_rule_arn IS NOT INITIAL.
-      tag_iot_resource( av_rule_arn ).
+    DATA(lv_rule_arn) = lo_rule_get->get_rulearn( ).
+    IF lv_rule_arn IS NOT INITIAL.
+      tag_iot_rule( lv_rule_arn ).
     ENDIF.
 
-    " 6. Dedicated thing for delete_thing test
+    " 6. Dedicated thing for delete_thing test (things not taggable)
     DATA(lv_uuid2) = /awsex/cl_utils=>get_random_string( ).
     lv_uuid_string = lv_uuid2.
     av_del_thing_name = |sap-abap-iot-del-{ lv_uuid_string }|.
     DATA(lo_del_thing) = ao_iot->creatething( iv_thingname = av_del_thing_name ).
     cl_abap_unit_assert=>assert_bound( act = lo_del_thing
       msg = |class_setup: failed to create del-thing| ).
-    av_del_thing_arn = lo_del_thing->get_thingarn( ).
-    tag_iot_resource( av_del_thing_arn ).
 
-    " 7. Dedicated certificate for delete_certificate test
+    " 7. Dedicated certificate for delete_certificate test (certs not taggable)
     DATA(lo_del_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound( act = lo_del_cert
       msg = |class_setup: failed to create del-cert| ).
@@ -194,9 +186,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     av_del_cert_arn = lo_del_cert->get_certificatearn( ).
     cl_abap_unit_assert=>assert_not_initial( act = av_del_cert_id
       msg = |class_setup: del-cert ID is empty| ).
-    tag_iot_resource( av_del_cert_arn ).
 
-    " 8. Dedicated topic rule for delete_topic_rule test
+    " 8. Dedicated topic rule for delete_topic_rule test (rules ARE taggable)
     DATA(lv_uuid3) = /awsex/cl_utils=>get_random_string( ).
     lv_uuid_string = lv_uuid3.
     av_del_rule_name = |SapAbapIotDel{ lv_uuid_string }|.
@@ -215,7 +206,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_del_rule_get) = ao_iot->gettopicrule( iv_rulename = av_del_rule_name ).
     DATA(lv_del_rule_arn) = lo_del_rule_get->get_rulearn( ).
     IF lv_del_rule_arn IS NOT INITIAL.
-      tag_iot_resource( lv_del_rule_arn ).
+      tag_iot_rule( lv_del_rule_arn ).
     ENDIF.
 
     " 9. Dedicated thing+cert pre-attached for detach_thing_principal test
@@ -225,13 +216,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_det_thing) = ao_iot->creatething( iv_thingname = av_det_thing_name ).
     cl_abap_unit_assert=>assert_bound( act = lo_det_thing
       msg = |class_setup: failed to create det-thing| ).
-    tag_iot_resource( lo_det_thing->get_thingarn( ) ).
     DATA(lo_det_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound( act = lo_det_cert
       msg = |class_setup: failed to create det-cert| ).
     av_det_cert_id  = lo_det_cert->get_certificateid( ).
     av_det_cert_arn = lo_det_cert->get_certificatearn( ).
-    tag_iot_resource( av_det_cert_arn ).
     ao_iot->attachthingprincipal(
       iv_thingname = av_det_thing_name
       iv_principal = av_det_cert_arn ).
@@ -245,6 +234,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 
   METHOD class_teardown.
+    " Shared cert: detach → deactivate → delete
     IF av_certificate_arn IS NOT INITIAL AND av_thing_name IS NOT INITIAL.
       TRY.
           ao_iot->detachthingprincipal(
@@ -272,6 +262,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
         CATCH /aws1/cx_rt_generic.
       ENDTRY.
     ENDIF.
+    " Det-thing/cert: detach → deactivate cert → delete cert → delete thing
     IF av_det_cert_arn IS NOT INITIAL AND av_det_thing_name IS NOT INITIAL.
       TRY.
           ao_iot->detachthingprincipal(
@@ -351,7 +342,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_not_initial(
       act = lo_result->get_thingarn( ) msg = |Created thing ARN is empty| ).
 
-    tag_iot_resource( lo_result->get_thingarn( ) ).
+    " Things not taggable via tagresource; cleanup immediately.
     ao_iot->deletething( iv_thingname = lv_new_thing ).
   ENDMETHOD.
 
@@ -386,7 +377,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_not_initial(
       act = lv_cert_arn msg = |Certificate ARN is empty| ).
 
-    tag_iot_resource( lv_cert_arn ).
+    " Certs not taggable; deactivate and delete immediately.
     ao_iot->updatecertificate(
       iv_certificateid = lv_cert_id iv_newstatus = 'INACTIVE' ).
     ao_iot->deletecertificate( iv_certificateid = lv_cert_id ).
@@ -402,14 +393,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA(lo_att_thing_rsp) = ao_iot->creatething( iv_thingname = lv_att_thing ).
     cl_abap_unit_assert=>assert_bound( act = lo_att_thing_rsp
       msg = |attach_test: creatething failed| ).
-    tag_iot_resource( lo_att_thing_rsp->get_thingarn( ) ).
 
     DATA(lo_att_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound( act = lo_att_cert
       msg = |attach_test: createkeysandcertificate failed| ).
     DATA(lv_att_cert_id)  = lo_att_cert->get_certificateid( ).
     DATA(lv_att_cert_arn) = lo_att_cert->get_certificatearn( ).
-    tag_iot_resource( lv_att_cert_arn ).
 
     DATA lv_success TYPE abap_bool.
     ao_iot_actions->attach_thing_principal(
@@ -493,6 +482,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( act = lv_still_attached
       msg = |Certificate is still attached after detach| ).
 
+    " Re-attach so teardown can detach-then-delete cleanly
     TRY.
         ao_iot->attachthingprincipal(
           iv_thingname = av_det_thing_name iv_principal = av_det_cert_arn ).
@@ -555,9 +545,10 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       exp = lv_new_rule act = lo_rule_rsp->get_rule( )->get_rulename( )
       msg = |Created rule name does not match| ).
 
+    " Tag the newly created rule (rules ARE taggable)
     DATA(lv_new_rule_arn) = lo_rule_rsp->get_rulearn( ).
     IF lv_new_rule_arn IS NOT INITIAL.
-      tag_iot_resource( lv_new_rule_arn ).
+      tag_iot_rule( lv_new_rule_arn ).
     ENDIF.
     ao_iot->deletetopicrule( iv_rulename = lv_new_rule ).
   ENDMETHOD.
@@ -605,8 +596,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     WHILE lv_retries < cv_max AND lv_ready = abap_false.
       TRY.
-          " Use a helper variable to avoid multi-line IMPORTING inside TRY
-          DATA(lo_si_result) = ao_iot->searchindex( iv_querystring = |thingName:{ av_thing_name }| ).
+          " Call the underlying SDK directly to avoid IMPORTING-inside-TRY syntax issues
+          DATA(lo_si_result) = ao_iot->searchindex(
+            iv_querystring = |thingName:{ av_thing_name }| ).
           lt_docs = lo_si_result->get_things( ).
           lv_ready = abap_true.
         CATCH /aws1/cx_iotindexnotreadyex.
@@ -658,7 +650,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = |Thing '{ av_del_thing_name }' was not deleted| ).
 
     CLEAR av_del_thing_name.
-    CLEAR av_del_thing_arn.
   ENDMETHOD.
 
 
