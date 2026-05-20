@@ -253,10 +253,12 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       msg = 'UpdateDistribution must return a non-empty ETag' ).
 
     " Verify the distribution object in the response carries the correct comment.
+    " Multi-level chaining is broken into steps for NetWeaver 7.4 compatibility.
+    DATA(lo_upd_dist) = lo_upd_result->get_distribution( ).
+    DATA(lo_upd_dist_cfg) = lo_upd_dist->get_distributionconfig( ).
     cl_abap_unit_assert=>assert_equals(
       exp = lv_new_comment
-      act = lo_upd_result->get_distribution( )
-              ->get_distributionconfig( )->get_comment( )
+      act = lo_upd_dist_cfg->get_comment( )
       msg = 'UpdateDistribution response must reflect the new comment' ).
 
     " Restore the original comment using the ETag from the update response,
