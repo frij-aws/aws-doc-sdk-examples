@@ -467,10 +467,13 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_se2messagerejected INTO DATA(lo_msg_rejected).
         MESSAGE 'Message rejected. Check that attachments use supported ' &&
                 'file types and total message size is under 40 MB.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_msg_rejected.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_suspended).
         MESSAGE 'Account is suspended.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_suspended.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
         MESSAGE 'Bad request - check sender/recipient addresses.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_bad_request.
     ENDTRY.
     " snippet-end:[se2.abapv1.send_email_with_attachment]
   ENDMETHOD.
@@ -502,12 +505,16 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_se2messagerejected INTO DATA(lo_msg_rejected).
         MESSAGE 'Bulk message rejected. Check template, attachment types, ' &&
                 'and message size limits.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_msg_rejected.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_suspended).
         MESSAGE 'Account is suspended.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_suspended.
       CATCH /aws1/cx_se2notfoundexception INTO DATA(lo_not_found).
         MESSAGE 'Template or identity not found.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_not_found.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
         MESSAGE 'Bad request - check sender address and template name.' TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_bad_request.
     ENDTRY.
     " snippet-end:[se2.abapv1.send_bulk_email]
   ENDMETHOD.
