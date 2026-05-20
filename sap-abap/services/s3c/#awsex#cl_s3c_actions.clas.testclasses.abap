@@ -8,46 +8,47 @@ CLASS ltc_s3c_actions DEFINITION FOR TESTING
   RISK LEVEL DANGEROUS.
 
   PRIVATE SECTION.
-    CONSTANTS cv_pfl          TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
-    CONSTANTS cv_role_name    TYPE /aws1/iamrolenametype VALUE 'S3BatchOpsExampleRole'.
-    CONSTANTS cv_policy_name  TYPE /aws1/iampolicynametype VALUE 'S3BatchOpsExamplePolicy'.
+    CONSTANTS cv_pfl         TYPE /aws1/rt_profile_id   VALUE 'ZCODE_DEMO'.
+    CONSTANTS cv_role_name   TYPE /aws1/iamrolenametype  VALUE 'S3BatchOpsExampleRole'.
+    CONSTANTS cv_policy_name TYPE /aws1/iampolicynametype VALUE 'S3BatchOpsExamplePolicy'.
 
     " ---------------------------------------------------------------
     " Shared clients and the class-under-test
     " ---------------------------------------------------------------
-    CLASS-DATA ao_s3c      TYPE REF TO /aws1/if_s3c.
-    CLASS-DATA ao_s3       TYPE REF TO /aws1/if_s3.
-    CLASS-DATA ao_iam      TYPE REF TO /aws1/if_iam.
-    CLASS-DATA ao_session  TYPE REF TO /aws1/cl_rt_session_base.
-    CLASS-DATA ao_actions  TYPE REF TO /awsex/cl_s3c_actions.
+    CLASS-DATA ao_s3c     TYPE REF TO /aws1/if_s3c.
+    CLASS-DATA ao_s3      TYPE REF TO /aws1/if_s3.
+    CLASS-DATA ao_iam     TYPE REF TO /aws1/if_iam.
+    CLASS-DATA ao_session TYPE REF TO /aws1/cl_rt_session_base.
+    CLASS-DATA ao_actions TYPE REF TO /awsex/cl_s3c_actions.
 
     " ---------------------------------------------------------------
-    " Test-resource state (all created fresh in class_setup)
+    " Test-resource state – created fresh in class_setup
     " ---------------------------------------------------------------
-    CLASS-DATA av_account_id     TYPE /aws1/s3caccountid.
-    CLASS-DATA av_s3_bucket      TYPE /aws1/s3_bucketname.
-    CLASS-DATA av_bucket_arn     TYPE /aws1/s3cs3bucketarnstring.
-    CLASS-DATA av_manifest_arn   TYPE /aws1/s3cs3keyarnstring.
-    CLASS-DATA av_manifest_etag  TYPE /aws1/s3cnonemptymaxlength1000.
-    CLASS-DATA av_role_arn       TYPE /aws1/s3ciamrolearn.
+    CLASS-DATA av_account_id    TYPE /aws1/s3caccountid.
+    CLASS-DATA av_s3_bucket     TYPE /aws1/s3_bucketname.
+    CLASS-DATA av_bucket_arn    TYPE /aws1/s3cs3bucketarnstring.
+    CLASS-DATA av_manifest_arn  TYPE /aws1/s3cs3keyarnstring.
+    CLASS-DATA av_manifest_etag TYPE /aws1/s3cnonemptymaxlength1000.
+    CLASS-DATA av_role_arn      TYPE /aws1/s3ciamrolearn.
 
-    " Shared read-only job (describe, get_tag, list tests)
-    CLASS-DATA av_job_id         TYPE /aws1/s3cjobid.
+    " Shared read-only job  (describe / get_tag / list)
+    CLASS-DATA av_job_id        TYPE /aws1/s3cjobid.
 
-    " Dedicated jobs for mutation tests – each test gets its own
-    CLASS-DATA av_job_id_prio    TYPE /aws1/s3cjobid.
-    CLASS-DATA av_job_id_cancel  TYPE /aws1/s3cjobid.
-    CLASS-DATA av_job_id_puttag  TYPE /aws1/s3cjobid.
-    CLASS-DATA av_job_id_deltag  TYPE /aws1/s3cjobid.
+    " Dedicated jobs for mutation tests – one per mutating test
+    CLASS-DATA av_job_id_prio   TYPE /aws1/s3cjobid.
+    CLASS-DATA av_job_id_cancel TYPE /aws1/s3cjobid.
+    CLASS-DATA av_job_id_puttag TYPE /aws1/s3cjobid.
+    CLASS-DATA av_job_id_deltag TYPE /aws1/s3cjobid.
+
+    " Job created inside the create_job test – tracked here so
+    " class_teardown can cancel it even when the test aborts mid-assertion.
+    CLASS-DATA av_job_id_create TYPE /aws1/s3cjobid.
 
     " ---------------------------------------------------------------
     " Lifecycle hooks
     " ---------------------------------------------------------------
-    CLASS-METHODS class_setup
-      RAISING /aws1/cx_rt_generic.
-
-    CLASS-METHODS class_teardown
-      RAISING /aws1/cx_rt_generic.
+    CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
+    CLASS-METHODS class_teardown RAISING /aws1/cx_rt_generic.
 
     " ---------------------------------------------------------------
     " Internal helpers
@@ -56,7 +57,7 @@ CLASS ltc_s3c_actions DEFINITION FOR TESTING
       RETURNING VALUE(rv_job_id) TYPE /aws1/s3cjobid
       RAISING   /aws1/cx_rt_generic.
 
-    " Poll until the job reaches one of the supplied statuses (or fail)
+    " Poll until the job reaches one of the supplied statuses – or fail
     CLASS-METHODS wait_for_job
       IMPORTING iv_job_id          TYPE /aws1/s3cjobid
                 it_target_statuses TYPE string_table
@@ -92,9 +93,9 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     av_account_id = ao_session->get_account_id( ).
 
     " ----------------------------------------------------------------
-    " 1.  S3 bucket  (manifest + report destination)
-    "     Use /awsex/cl_utils=>create_bucket so region constraint is
-    "     handled correctly.  Tag immediately after creation.
+    " 1. S3 bucket (manifest + report destination)
+    "    Use /awsex/cl_utils=>create_bucket so the region-constraint
+    "    special-case for us-east-1 is handled correctly.
     " ----------------------------------------------------------------
     av_s3_bucket = |sap-abap-s3c-{ av_account_id }|.
 
@@ -111,15 +112,14 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_bucket  = av_s3_bucket
       io_tagging = NEW /aws1/cl_s3_tagging( it_tagset = lt_s3_tags ) ).
 
-    " ARN used in report and manifest location
-    av_bucket_arn  = |arn:aws:s3:::{ av_s3_bucket }|.
+    av_bucket_arn   = |arn:aws:s3:::{ av_s3_bucket }|.
     av_manifest_arn = |arn:aws:s3:::{ av_s3_bucket }/job-manifest.csv|.
 
     " ----------------------------------------------------------------
-    " 2.  Manifest object
-    "     The CSV must reference a real bucket name; the key does not
-    "     have to exist for CreateJob to succeed with
-    "     ConfirmationRequired=true (job stays Suspended).
+    " 2. Manifest CSV object
+    "    The object key referenced in the CSV does not need to exist
+    "    because ConfirmationRequired=true keeps every job Suspended,
+    "    meaning it never starts processing.
     " ----------------------------------------------------------------
     DATA lv_csv TYPE string.
     lv_csv = |{ av_s3_bucket },dummy-object.txt\n|.
@@ -129,22 +129,19 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_key    = 'job-manifest.csv'
       iv_body   = cl_abap_codepage=>convert_to( lv_csv ) ).
 
-    " S3 returns the ETag wrapped in double-quotes; strip them.
+    " S3 wraps the ETag in double-quotes; strip them.
     av_manifest_etag = lo_put->get_etag( ).
     REPLACE ALL OCCURRENCES OF '"' IN av_manifest_etag WITH ''.
 
     " ----------------------------------------------------------------
-    " 3.  IAM role for S3 Batch Operations
-    "     Always (re)create the role so the exact policy the tests
-    "     require is applied.  The correct permissions come straight
-    "     from the AWS documentation for PutObjectTagging jobs:
+    " 3. IAM role for S3 Batch Operations
+    "    Create the role (or get its ARN if it already exists), then
+    "    always overwrite the inline policy to ensure correct perms.
     "
-    "       s3:PutObjectTagging / s3:PutObjectVersionTagging  →  target bucket
-    "       s3:GetObject / s3:GetObjectVersion                →  manifest bucket
-    "       s3:PutObject                                      →  report bucket
-    "
-    "     Because all three are the same bucket here we can use a
-    "     single wildcard statement over that one bucket.
+    "    Permissions required for a PutObjectTagging job (per AWS docs):
+    "      s3:PutObjectTagging + s3:PutObjectVersionTagging  → target objects
+    "      s3:GetObject + s3:GetObjectVersion                → manifest object
+    "      s3:PutObject                                      → report prefix
     " ----------------------------------------------------------------
     DATA lv_trust TYPE string.
     lv_trust =
@@ -158,7 +155,9 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
           iv_assumerolepolicydocument = lv_trust
           iv_description              = 'S3 Batch Ops role for ABAP unit tests'
           it_tags                     = VALUE /aws1/cl_iamtag=>tt_taglisttype(
-            ( NEW /aws1/cl_iamtag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+            ( NEW /aws1/cl_iamtag(
+                iv_key   = 'convert_test'
+                iv_value = 'true' ) ) ) ).
         av_role_arn = lo_cr->get_role( )->get_arn( ).
       CATCH /aws1/cx_iamentityalrdyexex.
         DATA(lo_gr) = ao_iam->getrole( iv_rolename = cv_role_name ).
@@ -167,12 +166,11 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_not_initial(
       act = av_role_arn
-      msg = 'Could not obtain IAM role ARN' ).
+      msg = 'Could not obtain IAM role ARN in class_setup' ).
 
-    " Build the exact permissions policy the AWS documentation specifies
-    " for a PutObjectTagging S3 Batch job.
     DATA lv_bkt TYPE string.
     lv_bkt = av_s3_bucket.
+
     DATA lv_perms TYPE string.
     lv_perms =
       '{"Version":"2012-10-17","Statement":[' &&
@@ -192,11 +190,11 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_policyname     = cv_policy_name
       iv_policydocument = lv_perms ).
 
-    " IAM changes take a few seconds to propagate globally
+    " IAM changes take a few seconds to propagate globally.
     WAIT UP TO 15 SECONDS.
 
     " ----------------------------------------------------------------
-    " 4.  Pre-create the jobs needed by the read-only and mutation tests
+    " 4. Pre-create one job per test that needs a dedicated resource.
     " ----------------------------------------------------------------
     av_job_id        = create_test_job( ).
     av_job_id_prio   = create_test_job( ).
@@ -210,7 +208,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_not_initial( act = av_job_id_puttag msg = 'PutTag job was not created' ).
     cl_abap_unit_assert=>assert_not_initial( act = av_job_id_deltag msg = 'DelTag job was not created' ).
 
-    " Wait for all jobs to leave the 'New'/'Preparing' transient states.
+    " Wait for all jobs to leave the transient New/Preparing states.
     " With ConfirmationRequired=true they land in Suspended.
     DATA lt_ok TYPE string_table.
     APPEND 'Suspended' TO lt_ok.
@@ -232,13 +230,16 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  CLASS_TEARDOWN
 " =====================================================================
   METHOD class_teardown.
-    " Cancel every job that is still in a cancellable state
+    " Cancel every job that is still in a cancellable state.
+    " av_job_id_create is included so the job spawned by the create_job
+    " test is cleaned up even if an assertion in that test aborted early.
     DATA lt_ids TYPE string_table.
     APPEND av_job_id        TO lt_ids.
     APPEND av_job_id_prio   TO lt_ids.
     APPEND av_job_id_cancel TO lt_ids.
     APPEND av_job_id_puttag TO lt_ids.
     APPEND av_job_id_deltag TO lt_ids.
+    APPEND av_job_id_create TO lt_ids.
 
     LOOP AT lt_ids INTO DATA(lv_id).
       CHECK lv_id IS NOT INITIAL.
@@ -252,11 +253,11 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
               iv_jobid              = lv_id
               iv_requestedjobstatus = 'Cancelled' ).
           ENDIF.
-        CATCH /aws1/cx_rt_generic.           " Best-effort
+        CATCH /aws1/cx_rt_generic.     " Best-effort per job
       ENDTRY.
     ENDLOOP.
 
-    " Clean up the S3 bucket (objects + bucket itself)
+    " Delete S3 bucket and all its objects.
     IF av_s3_bucket IS NOT INITIAL.
       TRY.
           /awsex/cl_utils=>cleanup_bucket(
@@ -266,12 +267,11 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       ENDTRY.
     ENDIF.
 
-    " Remove the inline policy then delete the IAM role.
-    " The role is tagged 'convert_test=true' so it can also be
-    " located and cleaned up manually if needed.
+    " Remove the inline policy and then delete the IAM role.
+    " The role is tagged convert_test=true for manual cleanup if needed.
     TRY.
         ao_iam->deleterolepolicy(
-          iv_rolename  = cv_role_name
+          iv_rolename   = cv_role_name
           iv_policyname = cv_policy_name ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
@@ -286,30 +286,27 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  HELPER – create_test_job
 " =====================================================================
   METHOD create_test_job.
-    " Use /awsex/cl_utils=>get_random_string for the idempotency token
     DATA lv_token TYPE string.
     lv_token = /awsex/cl_utils=>get_random_string( ).
     CONDENSE lv_token NO-GAPS.
 
-    " Tag set for the batch operation itself
     DATA lt_tagset TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
     APPEND NEW /aws1/cl_s3cs3tag(
       iv_key   = 'BatchTag'
       iv_value = 'BatchValue' ) TO lt_tagset.
 
-    " Manifest field list: Bucket, Key
     DATA lt_fields TYPE /aws1/cl_s3cjobmanifestfield00=>tt_jobmanifestfieldlist.
     APPEND NEW /aws1/cl_s3cjobmanifestfield00( 'Bucket' ) TO lt_fields.
     APPEND NEW /aws1/cl_s3cjobmanifestfield00( 'Key' )    TO lt_fields.
 
     DATA(lo_result) = ao_s3c->createjob(
       iv_accountid            = av_account_id
-      " ConfirmationRequired=true keeps the job in Suspended so it
+      " ConfirmationRequired=true keeps the job Suspended so it
       " never actually processes objects during the unit test.
       iv_confirmationrequired = abap_true
       iv_priority             = 10
       iv_rolearn              = av_role_arn
-      iv_description          = 'ABAP unit test – S3C batch job'
+      iv_description          = 'ABAP unit test - S3C batch job'
       iv_clientrequesttoken   = lv_token
       io_operation            = NEW /aws1/cl_s3cjoboperation(
         io_s3putobjecttagging = NEW /aws1/cl_s3cs3setobjecttagop(
@@ -331,7 +328,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     rv_job_id = lo_result->get_jobid( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = rv_job_id
-      msg = 'create_test_job: CreateJob returned empty job ID' ).
+      msg = 'create_test_job: CreateJob returned an empty job ID' ).
   ENDMETHOD.
 
 
@@ -339,13 +336,11 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  HELPER – wait_for_job
 " =====================================================================
   METHOD wait_for_job.
-    CONSTANTS cv_max_attempts TYPE i VALUE 60.   " 60 × 5 s = 5 min
-    DATA lv_attempt TYPE i.
+    CONSTANTS cv_max TYPE i VALUE 60.   " 60 × 5 s = 5 min ceiling
+    DATA lv_status TYPE /aws1/s3cjobstatus.
 
-    DO cv_max_attempts TIMES.
-      lv_attempt = sy-index.
-
-      DATA(lv_status) = ao_s3c->describejob(
+    DO cv_max TIMES.
+      lv_status = ao_s3c->describejob(
         iv_accountid = av_account_id
         iv_jobid     = iv_job_id )->get_job( )->get_status( ).
 
@@ -355,16 +350,12 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      IF lv_attempt < cv_max_attempts.
-        WAIT UP TO 5 SECONDS.
-      ENDIF.
+      WAIT UP TO 5 SECONDS.
     ENDDO.
 
-    " If we get here the job did not reach the desired state
     cl_abap_unit_assert=>fail(
       msg = |Job { iv_job_id } did not reach an expected status | &&
-            |after { cv_max_attempts } attempts. | &&
-            |Last status: { lv_status }| ).
+            |after { cv_max } attempts. Last status: { lv_status }| ).
   ENDMETHOD.
 
 
@@ -372,10 +363,9 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: create_job
 " =====================================================================
   METHOD create_job.
-    " create_job is the action-under-test: it calls the ABAP SDK directly.
-    DATA lv_new_job_id TYPE /aws1/s3cjobid.
-
-    lv_new_job_id = ao_actions->create_job(
+    " Store the new job ID in a CLASS-DATA field immediately so that
+    " class_teardown can cancel it even if an assertion below aborts.
+    av_job_id_create = ao_actions->create_job(
       iv_account_id     = av_account_id
       iv_role_arn       = av_role_arn
       iv_manifest_arn   = av_manifest_arn
@@ -383,24 +373,25 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_report_bkt_arn = av_bucket_arn ).
 
     cl_abap_unit_assert=>assert_not_initial(
-      act = lv_new_job_id
+      act = av_job_id_create
       msg = 'create_job must return a non-empty job ID' ).
 
-    " Confirm the job really exists in S3 Batch
+    " Confirm the job exists in S3 Batch
     DATA(lo_desc) = ao_s3c->describejob(
       iv_accountid = av_account_id
-      iv_jobid     = lv_new_job_id ).
+      iv_jobid     = av_job_id_create ).
 
     cl_abap_unit_assert=>assert_equals(
-      exp = lv_new_job_id
+      exp = av_job_id_create
       act = lo_desc->get_job( )->get_jobid( )
-      msg = |Created job { lv_new_job_id } was not found via DescribeJob| ).
+      msg = |Created job { av_job_id_create } was not found via DescribeJob| ).
 
-    " Clean up: cancel the job so it does not linger as Suspended
+    " Cancel the job now that the assertion has passed.
+    " class_teardown will also attempt cancellation as a safety net.
     TRY.
         ao_s3c->updatejobstatus(
           iv_accountid          = av_account_id
-          iv_jobid              = lv_new_job_id
+          iv_jobid              = av_job_id_create
           iv_requestedjobstatus = 'Cancelled' ).
       CATCH /aws1/cx_rt_generic.     " Best-effort
     ENDTRY.
@@ -411,30 +402,29 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: describe_job
 " =====================================================================
   METHOD describe_job.
-    " The shared job was created and has reached Suspended in class_setup.
-    ao_actions->describe_job(
+    " Call the action and assert directly on its return value.
+    DATA(lo_result) = ao_actions->describe_job(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id ).
 
-    " Validate the response directly so the test cannot silently pass
-    DATA(lo_desc) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id ).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'describe_job must return a bound result object' ).
 
-    DATA(lo_job) = lo_desc->get_job( ).
+    DATA(lo_job) = lo_result->get_job( ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = av_job_id
       act = lo_job->get_jobid( )
-      msg = 'DescribeJob returned wrong job ID' ).
+      msg = 'describe_job returned wrong job ID' ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lo_job->get_status( )
-      msg = 'DescribeJob returned empty status' ).
+      msg = 'describe_job returned empty status' ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lo_job->get_rolearn( )
-      msg = 'DescribeJob returned empty role ARN' ).
+      msg = 'describe_job returned empty role ARN' ).
   ENDMETHOD.
 
 
@@ -442,30 +432,24 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: update_job_priority
 " =====================================================================
   METHOD update_job_priority.
-    " The priority job must be in Suspended or Ready for this call.
+    " The job must be in Suspended or Ready for UpdateJobPriority.
     DATA lt_mutable TYPE string_table.
     APPEND 'Suspended' TO lt_mutable.
     APPEND 'Ready'     TO lt_mutable.
-
     wait_for_job(
       iv_job_id          = av_job_id_prio
       it_target_statuses = lt_mutable ).
 
-    " Call the action
-    ao_actions->update_job_priority(
+    " Call the action and assert directly on the returned confirmed priority.
+    DATA(lv_confirmed_priority) = ao_actions->update_job_priority(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_prio
       iv_priority   = 60 ).
 
-    " Confirm the new priority
-    DATA(lo_desc) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_prio ).
-
     cl_abap_unit_assert=>assert_equals(
       exp = 60
-      act = lo_desc->get_job( )->get_priority( )
-      msg = |Job { av_job_id_prio } priority was not updated to 60| ).
+      act = lv_confirmed_priority
+      msg = |update_job_priority must return confirmed priority 60| ).
   ENDMETHOD.
 
 
@@ -473,38 +457,25 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: update_job_status  (cancels av_job_id_cancel)
 " =====================================================================
   METHOD update_job_status.
-    " Wait until the job is in a state that allows cancellation
+    " Wait until the job is in a cancellable state.
     DATA lt_cancellable TYPE string_table.
     APPEND 'Suspended' TO lt_cancellable.
     APPEND 'Ready'     TO lt_cancellable.
     APPEND 'Active'    TO lt_cancellable.
-
     wait_for_job(
       iv_job_id          = av_job_id_cancel
       it_target_statuses = lt_cancellable ).
 
-    " Call the action
-    ao_actions->update_job_status(
+    " Call the action and assert directly on the returned confirmed status.
+    DATA(lv_confirmed_status) = ao_actions->update_job_status(
       iv_account_id           = av_account_id
       iv_job_id               = av_job_id_cancel
       iv_requested_job_status = 'Cancelled' ).
 
-    " Confirm cancellation
-    DATA lt_done TYPE string_table.
-    APPEND 'Cancelled' TO lt_done.
-
-    wait_for_job(
-      iv_job_id          = av_job_id_cancel
-      it_target_statuses = lt_done ).
-
-    DATA(lv_status) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_cancel )->get_job( )->get_status( ).
-
     cl_abap_unit_assert=>assert_equals(
       exp = 'Cancelled'
-      act = lv_status
-      msg = |Job { av_job_id_cancel } should be Cancelled| ).
+      act = lv_confirmed_status
+      msg = |update_job_status must return confirmed status 'Cancelled'| ).
   ENDMETHOD.
 
 
@@ -512,26 +483,35 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: put_job_tagging
 " =====================================================================
   METHOD put_job_tagging.
-    " Call the action (adds Environment=Development, Team=DataProcessing)
+    " Build the tag list to apply.
+    DATA lt_tags TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
+    APPEND NEW /aws1/cl_s3cs3tag(
+      iv_key   = 'Environment'
+      iv_value = 'Development' ) TO lt_tags.
+    APPEND NEW /aws1/cl_s3cs3tag(
+      iv_key   = 'Team'
+      iv_value = 'DataProcessing' ) TO lt_tags.
+
+    " Call the action (void – no return value by design).
     ao_actions->put_job_tagging(
       iv_account_id = av_account_id
-      iv_job_id     = av_job_id_puttag ).
+      iv_job_id     = av_job_id_puttag
+      it_tags       = lt_tags ).
 
-    " Verify via GetJobTagging
+    " Validate via GetJobTagging that the tags are now present.
     DATA(lo_result) = ao_s3c->getjobtagging(
       iv_accountid = av_account_id
       iv_jobid     = av_job_id_puttag ).
 
-    DATA(lt_tags) = lo_result->get_tags( ).
+    DATA(lt_actual) = lo_result->get_tags( ).
 
     cl_abap_unit_assert=>assert_true(
-      act = xsdbool( lines( lt_tags ) >= 2 )
-      msg = |Job { av_job_id_puttag } should have ≥2 tags after put_job_tagging| ).
+      act = xsdbool( lines( lt_actual ) >= 2 )
+      msg = |Job { av_job_id_puttag } should have at least 2 tags after put_job_tagging| ).
 
-    " Verify the exact tag keys are present
     DATA lv_found_env  TYPE abap_bool VALUE abap_false.
     DATA lv_found_team TYPE abap_bool VALUE abap_false.
-    LOOP AT lt_tags INTO DATA(lo_tag).
+    LOOP AT lt_actual INTO DATA(lo_tag).
       CASE lo_tag->get_key( ).
         WHEN 'Environment'. lv_found_env  = abap_true.
         WHEN 'Team'.        lv_found_team = abap_true.
@@ -551,8 +531,8 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: get_job_tagging
 " =====================================================================
   METHOD get_job_tagging.
-    " Pre-condition: put a known tag so get_job_tagging has something
-    "                to retrieve.
+    " Pre-condition: put a known tag so get_job_tagging has
+    " something to retrieve.
     DATA lt_pre TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
     APPEND NEW /aws1/cl_s3cs3tag(
       iv_key   = 'GetTagTest'
@@ -563,21 +543,14 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_jobid     = av_job_id
       it_tags      = lt_pre ).
 
-    " Call the action-under-test
-    ao_actions->get_job_tagging(
+    " Call the action and assert directly on its returned tag list.
+    DATA(lt_tags) = ao_actions->get_job_tagging(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id ).
 
-    " Validate: GetJobTagging must return the tag we just set
-    DATA(lo_result) = ao_s3c->getjobtagging(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id ).
-
-    DATA(lt_tags) = lo_result->get_tags( ).
-
     cl_abap_unit_assert=>assert_not_initial(
       act = lt_tags
-      msg = |Job { av_job_id } must have at least one tag| ).
+      msg = |get_job_tagging must return at least one tag for job { av_job_id }| ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lt_tags INTO DATA(lo_tag).
@@ -589,7 +562,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Tag 'GetTagTest' should be visible via get_job_tagging| ).
+      msg = |Tag 'GetTagTest' must appear in get_job_tagging result| ).
   ENDMETHOD.
 
 
@@ -597,33 +570,14 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: list_jobs
 " =====================================================================
   METHOD list_jobs.
-    " Call the action
-    ao_actions->list_jobs( iv_account_id = av_account_id ).
-
-    " Independently verify: at least the shared job appears in the list
-    DATA lt_statuses TYPE /aws1/cl_s3cjobstatuslist_w=>tt_jobstatuslist.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Active' )    TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Cancelled' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Complete' )  TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Failed' )    TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'New' )       TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Paused' )    TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Pausing' )   TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Preparing' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )     TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' ) TO lt_statuses.
-
-    DATA(lo_list) = ao_s3c->listjobs(
-      iv_accountid   = av_account_id
-      it_jobstatuses = lt_statuses ).
-
-    DATA(lt_jobs) = lo_list->get_jobs( ).
+    " Call the action and assert directly on its returned job list.
+    DATA(lt_jobs) = ao_actions->list_jobs( iv_account_id = av_account_id ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lt_jobs
-      msg = 'ListJobs returned an empty job list' ).
+      msg = 'list_jobs must return a non-empty job list' ).
 
-    " Verify the shared job is present
+    " Verify the shared job appears in the returned list.
     DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lt_jobs INTO DATA(lo_job).
       IF lo_job->get_jobid( ) = av_job_id.
@@ -634,7 +588,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Shared job { av_job_id } not found in ListJobs response| ).
+      msg = |Shared job { av_job_id } must appear in list_jobs result| ).
   ENDMETHOD.
 
 
@@ -642,8 +596,8 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 "  TEST: delete_job_tagging
 " =====================================================================
   METHOD delete_job_tagging.
-    " Pre-condition: set at least one tag so DeleteJobTagging has
-    "                something to remove.
+    " Pre-condition: set a tag so delete_job_tagging has something
+    " to remove.
     DATA lt_pre TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
     APPEND NEW /aws1/cl_s3cs3tag(
       iv_key   = 'DeleteMe'
@@ -654,28 +608,29 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       iv_jobid     = av_job_id_deltag
       it_tags      = lt_pre ).
 
-    " Confirm the tag is there before calling the action
+    " Confirm the tag exists before calling the action.
     DATA(lt_before) = ao_s3c->getjobtagging(
       iv_accountid = av_account_id
       iv_jobid     = av_job_id_deltag )->get_tags( ).
 
     cl_abap_unit_assert=>assert_not_initial(
       act = lt_before
-      msg = |Tags were not set on job { av_job_id_deltag } before delete test| ).
+      msg = |Tags must be set on job { av_job_id_deltag } before delete test| ).
 
-    " Call the action-under-test
+    " Call the action (void – the API response for DeleteJobTagging
+    " carries no payload beyond HTTP 200).
     ao_actions->delete_job_tagging(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_deltag ).
 
-    " Validate: all tags must be gone
+    " Validate deletion via a direct GetJobTagging call.
     DATA(lt_after) = ao_s3c->getjobtagging(
       iv_accountid = av_account_id
       iv_jobid     = av_job_id_deltag )->get_tags( ).
 
     cl_abap_unit_assert=>assert_initial(
       act = lt_after
-      msg = |Job { av_job_id_deltag } should have no tags after delete_job_tagging| ).
+      msg = |Job { av_job_id_deltag } must have no tags after delete_job_tagging| ).
   ENDMETHOD.
 
 ENDCLASS.
