@@ -62,6 +62,11 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   " =========================================================================
   METHOD class_setup.
     DATA lv_uuid_string   TYPE string.
+    " Declared as /aws1/fntstring (= TYPE STRING) so they are type-compatible
+    " with the /aws1/cl_fntorigin and /aws1/cl_fntdefaultcachebehav constructors.
+    " Inline DATA(...) = 'literal' would infer type c, which is not compatible.
+    DATA lv_origin_domain TYPE /aws1/fntstring.
+    DATA lv_origin_id     TYPE /aws1/fntstring.
     DATA lo_create_result TYPE REF TO /aws1/cl_fntcredistributionrs.
     DATA lo_distribution  TYPE REF TO /aws1/cl_fntdistribution.
 
@@ -77,10 +82,10 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     CONDENSE lv_uuid_string NO-GAPS.
 
     " Unique caller reference, e.g. 'abap-test-A1B2C3D4E5'
-    DATA(lv_caller_ref)    = |abap-test-{ lv_uuid_string }|.
+    DATA(lv_caller_ref) = |abap-test-{ lv_uuid_string }|.
     " Example origin domain: 'docs.aws.amazon.com'
-    DATA(lv_origin_domain) = 'docs.aws.amazon.com'.
-    DATA(lv_origin_id)     = 'docs-origin'.
+    lv_origin_domain = |docs.aws.amazon.com|.
+    lv_origin_id     = |docs-origin|.
 
     DATA(lo_dist_config) = NEW /aws1/cl_fntdistributionconfig(
       iv_callerreference      = lv_caller_ref
@@ -111,7 +116,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       io_defaultcachebehavior = NEW /aws1/cl_fntdefaultcachebehav(
         iv_targetoriginid       = lv_origin_id
         iv_viewerprotocolpolicy = 'allow-all'
-        " AWS-managed CachingOptimized policy – stable ID across all accounts/regions
+        " AWS-managed CachingOptimized policy - stable ID across all accounts/regions
         iv_cachepolicyid        = '658327ea-f89d-4fab-a63d-7e88639e58f6'
       )
       io_restrictions = NEW /aws1/cl_fntrestrictions(
@@ -327,7 +332,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           lo_get_result = lo_fnt_local->getdistribution( iv_id = iv_distribution_id ).
           lv_status = lo_get_result->get_distribution( )->get_status( ).
         CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_poll_ex).
-          " Log the error and return false – do not assert.
+          " Log the error and return false - do not assert.
           MESSAGE |wait_for_deployed_safe: poll error - { lo_poll_ex->get_text( ) }| TYPE 'I'.
           RETURN.
       ENDTRY.
