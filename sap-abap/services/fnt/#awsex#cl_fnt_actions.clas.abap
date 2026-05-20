@@ -49,7 +49,10 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
           ENDLOOP.
         ENDIF.
 
-        MESSAGE |Retrieved { lo_distrib_list->get_quantity( ) } CloudFront distribution(s)| TYPE 'I'.
+        DATA(lv_qty) = COND #( WHEN lo_distrib_list IS BOUND
+                               THEN lo_distrib_list->get_quantity( )
+                               ELSE 0 ).
+        MESSAGE |Retrieved { lv_qty } CloudFront distribution(s)| TYPE 'I'.
 
       CATCH /aws1/cx_fntclientexc INTO DATA(lo_client_ex).
         MESSAGE lo_client_ex->get_text( ) TYPE 'I'.

@@ -22,7 +22,7 @@ CLASS ltc_awsex_cl_fnt_actions DEFINITION
     " Test distribution created in class_setup and shared across all tests.
     " CloudFront distributions take 10-15 minutes to deploy and an equally
     " long time to disable + delete, so class_teardown performs the full
-    " disable→wait→delete sequence.  The DURATION LONG declaration permits
+    " disable->wait->delete sequence.  The DURATION LONG declaration permits
     " the total run time this requires.  The distribution is also tagged
     " convert_test=true so it can be found manually if teardown is interrupted.
     " -----------------------------------------------------------------------
@@ -35,12 +35,23 @@ CLASS ltc_awsex_cl_fnt_actions DEFINITION
     CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
     CLASS-METHODS class_teardown.
 
-    " Helper – poll GetDistribution until status = 'Deployed' or timeout.
+    " For class_setup / test methods: polls until Deployed; calls
+    " cl_abap_unit_assert=>fail on timeout or API error so the test
+    " is clearly marked as failed rather than hanging silently.
     CLASS-METHODS wait_for_deployed
       IMPORTING
         iv_distribution_id TYPE /aws1/fntstring
       RAISING
         /aws1/cx_rt_generic.
+
+    " For class_teardown: same poll, but returns abap_false on timeout or
+    " API error instead of calling assert=>fail.  Safe in a no-RAISING
+    " context because cx_abap_unit_abort cannot escape.
+    CLASS-METHODS wait_for_deployed_safe
+      IMPORTING
+        iv_distribution_id TYPE /aws1/fntstring
+      RETURNING
+        VALUE(rv_success)  TYPE abap_bool.
 
 ENDCLASS.
 
@@ -50,7 +61,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   " class_setup
   " =========================================================================
   METHOD class_setup.
-    DATA lv_uuid_string TYPE string.
+    DATA lv_uuid_string   TYPE string.
     DATA lo_create_result TYPE REF TO /aws1/cl_fntcredistributionrs.
     DATA lo_distribution  TYPE REF TO /aws1/cl_fntdistribution.
 
@@ -119,10 +130,10 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           io_distributionconfig = lo_dist_config ).
       CATCH /aws1/cx_fntclientexc INTO DATA(lo_cx).
         cl_abap_unit_assert=>fail(
-          msg = |class_setup: createdistribution failed – { lo_cx->get_text( ) }| ).
+          msg = |class_setup: createdistribution failed - { lo_cx->get_text( ) }| ).
       CATCH /aws1/cx_fntserverexc INTO DATA(lo_sx).
         cl_abap_unit_assert=>fail(
-          msg = |class_setup: createdistribution server error – { lo_sx->get_text( ) }| ).
+          msg = |class_setup: createdistribution server error - { lo_sx->get_text( ) }| ).
     ENDTRY.
 
     lo_distribution     = lo_create_result->get_distribution( ).
@@ -148,7 +159,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           )
         ).
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_tag_ex).
-        MESSAGE |class_setup: tagging failed – { lo_tag_ex->get_text( ) }| TYPE 'I'.
+        MESSAGE |class_setup: tagging failed - { lo_tag_ex->get_text( ) }| TYPE 'I'.
     ENDTRY.
 
     " Wait until the distribution is Deployed before running tests.
@@ -159,7 +170,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   ENDMETHOD.
 
   " =========================================================================
-  " class_teardown  – no RAISING; every step in its own TRY/CATCH
+  " class_teardown  - no RAISING; every step in its own TRY/CATCH
   " =========================================================================
   METHOD class_teardown.
     " -----------------------------------------------------------------------
@@ -171,6 +182,13 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     " Each step is in its own TRY/CATCH so a failure in one step does not
     " prevent the others from running.  If deletion fails, the distribution
     " remains tagged convert_test=true for manual cleanup.
+    "
+    " wait_for_deployed_safe is used here (not wait_for_deployed) because
+    " class_teardown has no RAISING clause.  wait_for_deployed calls
+    " cl_abap_unit_assert=>fail internally, which raises cx_abap_unit_abort
+    " -- a subclass of cx_static_check that is NOT caught by
+    " CATCH /aws1/cx_rt_generic, and would escape class_teardown unchecked.
+    " wait_for_deployed_safe returns abap_false instead of asserting.
     " -----------------------------------------------------------------------
     IF av_distribution_id IS INITIAL.
       RETURN.
@@ -211,36 +229,48 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
         lv_etag = lo_upd_result->get_etag( ).
         MESSAGE |class_teardown: distribution { av_distribution_id } disabled| TYPE 'I'.
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_dis_ex).
-        MESSAGE |class_teardown: disable failed – { lo_dis_ex->get_text( ) }| TYPE 'I'.
+        MESSAGE |class_teardown: disable failed - { lo_dis_ex->get_text( ) }| TYPE 'I'.
         RETURN.  " Cannot delete without disabling first.
     ENDTRY.
 
     " --- Step 2: wait for Deployed after disable --------------------------
+    " Use wait_for_deployed_safe: returns abap_false on error/timeout
+    " instead of calling assert=>fail, so no exception can escape teardown.
+    DATA(lv_deployed) = wait_for_deployed_safe( av_distribution_id ).
+    IF lv_deployed = abap_false.
+      MESSAGE |class_teardown: distribution { av_distribution_id } did not reach| &&
+              | Deployed after disable; skipping delete.| &&
+              | Tagged convert_test=true for manual cleanup.| TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    " Refresh ETag after deployment of the disable change.
     TRY.
-        wait_for_deployed( av_distribution_id ).
-        " Refresh ETag after deployment of the disable change.
         DATA(lo_etag_resp) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
         lv_etag = lo_etag_resp->get_etag( ).
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_wait_ex).
-        MESSAGE |class_teardown: wait for Deployed failed – { lo_wait_ex->get_text( ) }| TYPE 'I'.
-        RETURN.  " ETag may be stale; do not attempt delete.
+      CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_etag_ex).
+        MESSAGE |class_teardown: ETag refresh failed - { lo_etag_ex->get_text( ) }| TYPE 'I'.
+        RETURN.
     ENDTRY.
 
     " --- Step 3: delete ---------------------------------------------------
     TRY.
         ao_fnt->deletedistribution(
-          iv_id       = av_distribution_id
-          iv_ifmatch  = lv_etag ).
+          iv_id      = av_distribution_id
+          iv_ifmatch = lv_etag ).
         MESSAGE |class_teardown: distribution { av_distribution_id } deleted| TYPE 'I'.
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_del_ex).
-        MESSAGE |class_teardown: delete failed – { lo_del_ex->get_text( ) }| &&
-                | Distribution { av_distribution_id } tagged convert_test=true for manual cleanup.| TYPE 'I'.
+        MESSAGE |class_teardown: delete failed - { lo_del_ex->get_text( ) }| &&
+                | Distribution { av_distribution_id } tagged convert_test=true| &&
+                | for manual cleanup.| TYPE 'I'.
     ENDTRY.
 
   ENDMETHOD.
 
   " =========================================================================
-  " wait_for_deployed  (private helper)
+  " wait_for_deployed  - for use in class_setup and test methods only.
+  " Calls cl_abap_unit_assert=>fail on timeout/error so the test is clearly
+  " marked failed.  Do NOT call from class_teardown.
   " =========================================================================
   METHOD wait_for_deployed.
     " Poll every 30 s for up to 35 attempts (~17.5 min).
@@ -260,7 +290,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           lv_status = lo_get_result->get_distribution( )->get_status( ).
         CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_poll_ex).
           cl_abap_unit_assert=>fail(
-            msg = |wait_for_deployed: GetDistribution failed – { lo_poll_ex->get_text( ) }| ).
+            msg = |wait_for_deployed: GetDistribution failed - { lo_poll_ex->get_text( ) }| ).
       ENDTRY.
 
       IF lv_status = 'Deployed'.
@@ -273,6 +303,46 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     cl_abap_unit_assert=>fail(
       msg = |Distribution { iv_distribution_id } did not reach 'Deployed' after| &&
             | { cv_max_polls } polls of { cv_poll_secs }s each.| ).
+  ENDMETHOD.
+
+  " =========================================================================
+  " wait_for_deployed_safe  - for use in class_teardown only.
+  " Returns abap_true when Deployed, abap_false on timeout or API error.
+  " Never raises; never calls assert=>fail.
+  " =========================================================================
+  METHOD wait_for_deployed_safe.
+    CONSTANTS cv_max_polls TYPE i VALUE 35.
+    CONSTANTS cv_poll_secs TYPE i VALUE 30.
+
+    DATA lv_status     TYPE /aws1/fntstring.
+    DATA lo_get_result TYPE REF TO /aws1/cl_fntgetdistributionrs.
+
+    rv_success = abap_false.
+
+    DATA(lo_fnt_local) = /aws1/cl_fnt_factory=>create(
+      /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ) ).
+
+    DO cv_max_polls TIMES.
+      TRY.
+          lo_get_result = lo_fnt_local->getdistribution( iv_id = iv_distribution_id ).
+          lv_status = lo_get_result->get_distribution( )->get_status( ).
+        CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_poll_ex).
+          " Log the error and return false – do not assert.
+          MESSAGE |wait_for_deployed_safe: poll error - { lo_poll_ex->get_text( ) }| TYPE 'I'.
+          RETURN.
+      ENDTRY.
+
+      IF lv_status = 'Deployed'.
+        rv_success = abap_true.
+        RETURN.
+      ENDIF.
+
+      WAIT UP TO cv_poll_secs SECONDS.
+    ENDDO.
+
+    " Timeout: return false without asserting.
+    MESSAGE |wait_for_deployed_safe: distribution { iv_distribution_id }| &&
+            | did not reach 'Deployed' after { cv_max_polls } polls.| TYPE 'I'.
   ENDMETHOD.
 
   " =========================================================================
@@ -344,7 +414,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
         lv_orig_comment = lo_cfg_resp->get_distributionconfig( )->get_comment( ).
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_read_ex).
         cl_abap_unit_assert=>fail(
-          msg = |update_distribution: could not read current config –| &&
+          msg = |update_distribution: could not read current config -| &&
                 | { lo_read_ex->get_text( ) }| ).
     ENDTRY.
 
@@ -356,9 +426,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       iv_distribution_id = av_distribution_id
       iv_new_comment     = lv_test_comment ).
 
-    " Assert directly on the returned result object: it must be bound and
-    " carry a non-empty ETag (proving UpdateDistribution succeeded and
-    " returned a real response, not a cached or partial one).
+    " Assert directly on the returned result object.
     cl_abap_unit_assert=>assert_bound(
       act = lo_result
       msg = 'update_distribution must return a bound result object' ).
@@ -368,8 +436,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       act = lv_new_etag
       msg = 'UpdateDistribution response must contain a non-empty ETag' ).
 
-    " The new ETag must differ from the one we used to submit the update,
-    " confirming the service accepted and versioned the change.
+    " The new ETag must differ from the one submitted, confirming the service
+    " accepted and versioned the change.
     DATA(lv_submitted_etag) = lo_cfg_resp->get_etag( ).
     cl_abap_unit_assert=>assert_differs(
       exp = lv_submitted_etag
@@ -384,7 +452,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           iv_new_comment     = lv_orig_comment ).
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_restore_ex).
         MESSAGE |update_distribution: could not restore original comment| &&
-                | – { lo_restore_ex->get_text( ) }| TYPE 'I'.
+                | - { lo_restore_ex->get_text( ) }| TYPE 'I'.
     ENDTRY.
   ENDMETHOD.
 
