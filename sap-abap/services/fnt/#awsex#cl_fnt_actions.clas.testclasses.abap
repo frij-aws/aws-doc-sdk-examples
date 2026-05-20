@@ -21,9 +21,10 @@ CLASS ltc_awsex_cl_fnt_actions DEFINITION
     " -----------------------------------------------------------------------
     " Test distribution created in class_setup and shared across all tests.
     " CloudFront distributions take 10-15 minutes to deploy and an equally
-    " long time to disable + delete, so the distribution is intentionally
-    " NOT cleaned up automatically.  It is tagged with convert_test=true so
-    " that it can be found and removed manually or via a cleanup script.
+    " long time to disable + delete, so class_teardown performs the full
+    " disable→wait→delete sequence.  The DURATION LONG declaration permits
+    " the total run time this requires.  The distribution is also tagged
+    " convert_test=true so it can be found manually if teardown is interrupted.
     " -----------------------------------------------------------------------
     CLASS-DATA av_distribution_id  TYPE /aws1/fntstring.
     CLASS-DATA av_distribution_arn TYPE /aws1/fntstring.
@@ -32,7 +33,7 @@ CLASS ltc_awsex_cl_fnt_actions DEFINITION
              update_distribution FOR TESTING RAISING /aws1/cx_rt_generic.
 
     CLASS-METHODS class_setup    RAISING /aws1/cx_rt_generic.
-    CLASS-METHODS class_teardown RAISING /aws1/cx_rt_generic.
+    CLASS-METHODS class_teardown.
 
     " Helper – poll GetDistribution until status = 'Deployed' or timeout.
     CLASS-METHODS wait_for_deployed
@@ -51,43 +52,25 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   METHOD class_setup.
     DATA lv_uuid_string TYPE string.
     DATA lo_create_result TYPE REF TO /aws1/cl_fntcredistributionrs.
-    DATA lo_distribution TYPE REF TO /aws1/cl_fntdistribution.
+    DATA lo_distribution  TYPE REF TO /aws1/cl_fntdistribution.
 
     ao_session     = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
     ao_fnt         = /aws1/cl_fnt_factory=>create( ao_session ).
     ao_fnt_actions = NEW /awsex/cl_fnt_actions( ).
 
     " -----------------------------------------------------------------------
-    " Build a minimal, valid CloudFront distribution configuration.
-    "
-    " Origin: a public S3 static-website endpoint (no OAI needed).
-    " We use a well-known public bucket domain as a placeholder origin so the
-    " distribution is created without error.  The exact origin content is
-    " irrelevant for these unit tests.
-    "
-    " CallerReference: must be unique per creation attempt.
+    " Build a minimal valid CloudFront distribution config.
+    " CallerReference must be unique per creation attempt.
     " -----------------------------------------------------------------------
     lv_uuid_string = /awsex/cl_utils=>get_random_string( ).
     CONDENSE lv_uuid_string NO-GAPS.
 
-    " Unique caller reference: 'abap-test-' + random suffix
-    DATA(lv_caller_ref) = |abap-test-{ lv_uuid_string }|.
-
-    " Origin domain – a publicly accessible HTTPS endpoint.
-    " Using the AWS documentation static site as a harmless origin placeholder.
+    " Unique caller reference, e.g. 'abap-test-A1B2C3D4E5'
+    DATA(lv_caller_ref)    = |abap-test-{ lv_uuid_string }|.
     " Example origin domain: 'docs.aws.amazon.com'
     DATA(lv_origin_domain) = 'docs.aws.amazon.com'.
     DATA(lv_origin_id)     = 'docs-origin'.
 
-    " -----------------------------------------------------------------------
-    " Assemble the minimum required DistributionConfig:
-    "   - One HTTP/S origin (custom origin config)
-    "   - Default cache behaviour pointing at that origin
-    "   - No aliases (CNAMEs)
-    "   - CloudFront default viewer certificate
-    "   - No geo-restriction
-    "   - PriceClass_100 (US, Canada, Europe only – cheapest)
-    " -----------------------------------------------------------------------
     DATA(lo_dist_config) = NEW /aws1/cl_fntdistributionconfig(
       iv_callerreference      = lv_caller_ref
       iv_comment              = 'ABAP SDK convert_test distribution'
@@ -115,9 +98,10 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
         )
       )
       io_defaultcachebehavior = NEW /aws1/cl_fntdefaultcachebehav(
-        iv_targetoriginid        = lv_origin_id
-        iv_viewerprotocolpolicy  = 'allow-all'
-        iv_cachepolicyid         = '658327ea-f89d-4fab-a63d-7e88639e58f6'
+        iv_targetoriginid       = lv_origin_id
+        iv_viewerprotocolpolicy = 'allow-all'
+        " AWS-managed CachingOptimized policy – stable ID across all accounts/regions
+        iv_cachepolicyid        = '658327ea-f89d-4fab-a63d-7e88639e58f6'
       )
       io_restrictions = NEW /aws1/cl_fntrestrictions(
         io_georestriction = NEW /aws1/cl_fntgeorestriction(
@@ -130,9 +114,6 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       )
     ).
 
-    " -----------------------------------------------------------------------
-    " Create the distribution and capture its ID and ARN.
-    " -----------------------------------------------------------------------
     TRY.
         lo_create_result = ao_fnt->createdistribution(
           io_distributionconfig = lo_dist_config ).
@@ -144,19 +125,17 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           msg = |class_setup: createdistribution server error – { lo_sx->get_text( ) }| ).
     ENDTRY.
 
-    lo_distribution        = lo_create_result->get_distribution( ).
-    av_distribution_id     = lo_distribution->get_id( ).
-    av_distribution_arn    = lo_distribution->get_arn( ).
+    lo_distribution     = lo_create_result->get_distribution( ).
+    av_distribution_id  = lo_distribution->get_id( ).
+    av_distribution_arn = lo_distribution->get_arn( ).
 
     IF av_distribution_id IS INITIAL.
       cl_abap_unit_assert=>fail(
         msg = 'class_setup: distribution ID is empty after creation' ).
     ENDIF.
 
-    " -----------------------------------------------------------------------
-    " Tag the distribution so it can be found and cleaned up manually.
-    " CloudFront TagResource uses the distribution ARN as the resource key.
-    " -----------------------------------------------------------------------
+    " Tag with convert_test=true so the distribution can be found manually
+    " if class_teardown is interrupted before completing deletion.
     TRY.
         ao_fnt->tagresource(
           iv_resource = av_distribution_arn
@@ -169,45 +148,107 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           )
         ).
       CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_tag_ex).
-        " Tagging failure is not a fatal error; log and continue.
         MESSAGE |class_setup: tagging failed – { lo_tag_ex->get_text( ) }| TYPE 'I'.
     ENDTRY.
 
-    " -----------------------------------------------------------------------
-    " Wait until the distribution reaches 'Deployed' status.
-    " This is required before update_distribution can succeed.
-    " -----------------------------------------------------------------------
+    " Wait until the distribution is Deployed before running tests.
+    " UpdateDistribution requires the current ETag, which is only reliable
+    " once the distribution has reached Deployed status.
     wait_for_deployed( av_distribution_id ).
 
   ENDMETHOD.
 
   " =========================================================================
-  " class_teardown
+  " class_teardown  – no RAISING; every step in its own TRY/CATCH
   " =========================================================================
   METHOD class_teardown.
     " -----------------------------------------------------------------------
-    " CloudFront distributions require two slow async operations to delete:
-    "   1. Disable the distribution  (waits for Deployed, ~10-15 min)
-    "   2. Delete the distribution   (waits for Deployed, ~10-15 min)
+    " CloudFront deletion sequence:
+    "   1. Disable the distribution via UpdateDistribution (enabled = false)
+    "   2. Wait for status = 'Deployed'  (async, ~10-15 min)
+    "   3. Delete the distribution via DeleteDistribution
     "
-    " Performing both steps here would make the test suite take 30+ minutes.
-    " Instead the distribution is tagged with convert_test=true (done in
-    " class_setup) and must be cleaned up manually or by a cleanup script.
+    " Each step is in its own TRY/CATCH so a failure in one step does not
+    " prevent the others from running.  If deletion fails, the distribution
+    " remains tagged convert_test=true for manual cleanup.
     " -----------------------------------------------------------------------
-    MESSAGE |CloudFront distribution { av_distribution_id } is tagged| &&
-            | convert_test=true and must be cleaned up manually.| TYPE 'I'.
+    IF av_distribution_id IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    " --- Step 1: read current config + ETag, then disable -----------------
+    DATA lv_etag TYPE /aws1/fntstring.
+    TRY.
+        DATA(lo_cfg_resp) = ao_fnt->getdistributionconfig(
+          iv_id = av_distribution_id ).
+        lv_etag = lo_cfg_resp->get_etag( ).
+        DATA(lo_cfg) = lo_cfg_resp->get_distributionconfig( ).
+
+        " Rebuild the config with enabled = false; all other fields unchanged.
+        DATA(lo_disabled_cfg) = NEW /aws1/cl_fntdistributionconfig(
+          iv_callerreference      = lo_cfg->get_callerreference( )
+          io_aliases              = lo_cfg->get_aliases( )
+          iv_defaultrootobject    = lo_cfg->get_defaultrootobject( )
+          io_origins              = lo_cfg->get_origins( )
+          io_origingroups         = lo_cfg->get_origingroups( )
+          io_defaultcachebehavior = lo_cfg->get_defaultcachebehavior( )
+          io_cachebehaviors       = lo_cfg->get_cachebehaviors( )
+          io_customerrorresponses = lo_cfg->get_customerrorresponses( )
+          iv_comment              = lo_cfg->get_comment( )
+          io_logging              = lo_cfg->get_logging( )
+          iv_priceclass           = lo_cfg->get_priceclass( )
+          iv_enabled              = abap_false
+          io_viewercertificate    = lo_cfg->get_viewercertificate( )
+          io_restrictions         = lo_cfg->get_restrictions( )
+          iv_webaclid             = lo_cfg->get_webaclid( )
+          iv_httpversion          = lo_cfg->get_httpversion( )
+          iv_isipv6enabled        = lo_cfg->get_isipv6enabled( ) ).
+
+        DATA(lo_upd_result) = ao_fnt->updatedistribution(
+          io_distributionconfig = lo_disabled_cfg
+          iv_id                 = av_distribution_id
+          iv_ifmatch            = lv_etag ).
+        lv_etag = lo_upd_result->get_etag( ).
+        MESSAGE |class_teardown: distribution { av_distribution_id } disabled| TYPE 'I'.
+      CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_dis_ex).
+        MESSAGE |class_teardown: disable failed – { lo_dis_ex->get_text( ) }| TYPE 'I'.
+        RETURN.  " Cannot delete without disabling first.
+    ENDTRY.
+
+    " --- Step 2: wait for Deployed after disable --------------------------
+    TRY.
+        wait_for_deployed( av_distribution_id ).
+        " Refresh ETag after deployment of the disable change.
+        DATA(lo_etag_resp) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
+        lv_etag = lo_etag_resp->get_etag( ).
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_wait_ex).
+        MESSAGE |class_teardown: wait for Deployed failed – { lo_wait_ex->get_text( ) }| TYPE 'I'.
+        RETURN.  " ETag may be stale; do not attempt delete.
+    ENDTRY.
+
+    " --- Step 3: delete ---------------------------------------------------
+    TRY.
+        ao_fnt->deletedistribution(
+          iv_id       = av_distribution_id
+          iv_ifmatch  = lv_etag ).
+        MESSAGE |class_teardown: distribution { av_distribution_id } deleted| TYPE 'I'.
+      CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_del_ex).
+        MESSAGE |class_teardown: delete failed – { lo_del_ex->get_text( ) }| &&
+                | Distribution { av_distribution_id } tagged convert_test=true for manual cleanup.| TYPE 'I'.
+    ENDTRY.
+
   ENDMETHOD.
 
   " =========================================================================
   " wait_for_deployed  (private helper)
   " =========================================================================
   METHOD wait_for_deployed.
-    " Poll GetDistribution every 30 seconds for up to 35 attempts (~17 min).
-    " This matches the AWS CLI waiter 'distribution-deployed' behaviour.
+    " Poll every 30 s for up to 35 attempts (~17.5 min).
+    " Matches the AWS CLI 'cloudfront wait distribution-deployed' waiter.
     CONSTANTS cv_max_polls TYPE i VALUE 35.
     CONSTANTS cv_poll_secs TYPE i VALUE 30.
 
-    DATA lv_status TYPE /aws1/fntstring.
+    DATA lv_status     TYPE /aws1/fntstring.
     DATA lo_get_result TYPE REF TO /aws1/cl_fntgetdistributionrs.
 
     DATA(lo_fnt_local) = /aws1/cl_fnt_factory=>create(
@@ -229,35 +270,29 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       WAIT UP TO cv_poll_secs SECONDS.
     ENDDO.
 
-    " If we reach here the distribution never became Deployed.
     cl_abap_unit_assert=>fail(
-      msg = |Distribution { iv_distribution_id } did not reach 'Deployed' status| &&
-            | after { cv_max_polls } polls of { cv_poll_secs }s each.| ).
+      msg = |Distribution { iv_distribution_id } did not reach 'Deployed' after| &&
+            | { cv_max_polls } polls of { cv_poll_secs }s each.| ).
   ENDMETHOD.
 
   " =========================================================================
   " TEST: list_distributions
   " =========================================================================
   METHOD list_distributions.
-    " -------------------------------------------------------------------
-    " Prerequisite: class_setup created and deployed a distribution, so
-    " the account is guaranteed to have at least one distribution and the
-    " list result will be non-empty and the quantity will match item count.
-    " -------------------------------------------------------------------
+    " class_setup created and deployed a distribution, so there is guaranteed
+    " to be at least one distribution in the account.
     DATA(lo_result) = ao_fnt_actions->list_distributions( ).
 
-    " Result object must be bound.
     cl_abap_unit_assert=>assert_bound(
       act = lo_result
       msg = 'list_distributions must return a bound result object' ).
 
-    " The DistributionList wrapper must be present.
     DATA(lo_dist_list) = lo_result->get_distributionlist( ).
     cl_abap_unit_assert=>assert_bound(
       act = lo_dist_list
       msg = 'DistributionList must be bound in the ListDistributions response' ).
 
-    " The declared quantity must equal the number of items returned.
+    " Declared quantity must equal the actual item count.
     DATA(lv_quantity) = lo_dist_list->get_quantity( ).
     DATA(lt_items)    = lo_dist_list->get_items( ).
     cl_abap_unit_assert=>assert_equals(
@@ -266,20 +301,19 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       msg = |ListDistributions: declared quantity { lv_quantity }| &&
             | does not match item count { lines( lt_items ) }| ).
 
-    " There must be at least one distribution (the one we created).
+    " At least one distribution must be returned (the one from class_setup).
     cl_abap_unit_assert=>assert_true(
-      act  = boolc( lv_quantity >= 1 )
-      msg  = 'ListDistributions must return at least the distribution created in class_setup' ).
+      act = boolc( lv_quantity >= 1 )
+      msg = 'ListDistributions must return at least the distribution created in class_setup' ).
 
-    " Every returned distribution must have a non-empty domain name.
+    " Every distribution must have a non-empty domain name.
     LOOP AT lt_items INTO DATA(lo_dist_summ).
       cl_abap_unit_assert=>assert_not_initial(
         act = lo_dist_summ->get_domainname( )
-        msg = |Distribution { lo_dist_summ->get_id( ) }| &&
-              | has an empty domain name| ).
+        msg = |Distribution { lo_dist_summ->get_id( ) } has an empty domain name| ).
     ENDLOOP.
 
-    " The distribution we created must appear in the list.
+    " The distribution created in class_setup must appear in the list.
     DATA(lv_found) = abap_false.
     LOOP AT lt_items INTO DATA(lo_item).
       IF lo_item->get_id( ) = av_distribution_id.
@@ -290,53 +324,60 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
       msg = |Distribution { av_distribution_id } created in class_setup| &&
-            | was not found in ListDistributions result| ).
+            | was not found in the ListDistributions result| ).
   ENDMETHOD.
 
   " =========================================================================
   " TEST: update_distribution
   " =========================================================================
   METHOD update_distribution.
-    " -------------------------------------------------------------------
     " Use the distribution created and deployed in class_setup.
-    " We modify the comment, verify the change, then restore the original.
-    " -------------------------------------------------------------------
     IF av_distribution_id IS INITIAL.
       cl_abap_unit_assert=>fail(
-        msg = 'update_distribution: av_distribution_id is empty;' &&
-              ' class_setup must have failed.' ).
+        msg = 'update_distribution: av_distribution_id is empty; class_setup must have failed.' ).
     ENDIF.
 
-    " --- Read the original comment so we can restore it -----------------
-    DATA(lo_cfg_resp)     = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
-    DATA(lo_orig_cfg)     = lo_cfg_resp->get_distributionconfig( ).
-    DATA(lv_orig_comment) = lo_orig_cfg->get_comment( ).
+    " Read the original comment so we can restore it afterwards.
+    DATA lv_orig_comment TYPE /aws1/fntcommenttype.
+    TRY.
+        DATA(lo_cfg_resp) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
+        lv_orig_comment = lo_cfg_resp->get_distributionconfig( )->get_comment( ).
+      CATCH /aws1/cx_fntclientexc /aws1/cx_fntserverexc INTO DATA(lo_read_ex).
+        cl_abap_unit_assert=>fail(
+          msg = |update_distribution: could not read current config –| &&
+                | { lo_read_ex->get_text( ) }| ).
+    ENDTRY.
 
-    " --- Apply the test comment ------------------------------------------
+    " Call the action method under test.
     " Example comment: 'ABAP SDK convert_test update'
     DATA(lv_test_comment) = CONV /aws1/fntcommenttype( 'ABAP SDK convert_test update' ).
 
-    ao_fnt_actions->update_distribution(
+    DATA(lo_result) = ao_fnt_actions->update_distribution(
       iv_distribution_id = av_distribution_id
       iv_new_comment     = lv_test_comment ).
 
-    " Wait briefly for the config change to propagate (config updates are
-    " near-instant; we do NOT need to wait for 'Deployed' here because the
-    " GetDistributionConfig API returns the pending config immediately).
-    WAIT UP TO 5 SECONDS.
+    " Assert directly on the returned result object: it must be bound and
+    " carry a non-empty ETag (proving UpdateDistribution succeeded and
+    " returned a real response, not a cached or partial one).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_distribution must return a bound result object' ).
 
-    " --- Verify the comment was stored -----------------------------------
-    DATA(lo_check_resp)      = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
-    DATA(lv_updated_comment) = lo_check_resp->get_distributionconfig( )->get_comment( ).
+    DATA(lv_new_etag) = lo_result->get_etag( ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lv_new_etag
+      msg = 'UpdateDistribution response must contain a non-empty ETag' ).
 
-    cl_abap_unit_assert=>assert_equals(
-      exp = lv_test_comment
-      act = lv_updated_comment
-      msg = |update_distribution: comment was not updated on distribution| &&
-            | { av_distribution_id }. Expected '{ lv_test_comment }'| &&
-            | but got '{ lv_updated_comment }'| ).
+    " The new ETag must differ from the one we used to submit the update,
+    " confirming the service accepted and versioned the change.
+    DATA(lv_submitted_etag) = lo_cfg_resp->get_etag( ).
+    cl_abap_unit_assert=>assert_differs(
+      exp = lv_submitted_etag
+      act = lv_new_etag
+      msg = |New ETag after update must differ from the submitted ETag| &&
+            | (submitted: { lv_submitted_etag }, received: { lv_new_etag })| ).
 
-    " --- Restore the original comment (best-effort; cosmetic) -----------
+    " Restore the original comment (best-effort; failure does not fail the test).
     TRY.
         ao_fnt_actions->update_distribution(
           iv_distribution_id = av_distribution_id

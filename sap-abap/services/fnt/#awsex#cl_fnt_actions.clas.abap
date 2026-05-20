@@ -17,6 +17,8 @@ CLASS /awsex/cl_fnt_actions DEFINITION
       IMPORTING
         !iv_distribution_id TYPE /aws1/fntstring
         !iv_new_comment     TYPE /aws1/fntcommenttype
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_fntupdistributionrs
       RAISING
         /aws1/cx_fntclientexc
         /aws1/cx_fntserverexc.
@@ -94,12 +96,13 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
           iv_httpversion           = lo_dist_config->get_httpversion( )
           iv_isipv6enabled         = lo_dist_config->get_isipv6enabled( ) ).
 
-        lo_fnt->updatedistribution(
+        oo_result = lo_fnt->updatedistribution(
           io_distributionconfig = lo_new_config
           iv_id                 = iv_distribution_id
           iv_ifmatch            = lv_etag ).
 
-        MESSAGE |Distribution { iv_distribution_id } updated with new comment| TYPE 'I'.
+        DATA(lv_new_etag) = oo_result->get_etag( ).
+        MESSAGE |Distribution { iv_distribution_id } updated; new ETag: { lv_new_etag }| TYPE 'I'.
 
       CATCH /aws1/cx_fntnosuchdistribution INTO DATA(lo_no_dist_ex).
         MESSAGE lo_no_dist_ex->get_text( ) TYPE 'I'.
