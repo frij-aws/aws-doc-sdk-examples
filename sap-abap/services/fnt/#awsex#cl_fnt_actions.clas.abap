@@ -18,6 +18,8 @@ CLASS /awsex/cl_fnt_actions DEFINITION
       IMPORTING
         !iv_distribution_id TYPE /aws1/fntstring
         !iv_comment         TYPE /aws1/fntcommenttype
+      EXPORTING
+        !oo_result          TYPE REF TO /aws1/cl_fntupdistributionrs
       RAISING
         /aws1/cx_rt_generic.
 
@@ -32,18 +34,24 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
 
   METHOD list_distributions.
 
+    " snippet-start:[fnt.abapv1.list_distributions]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
-
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.list_distributions]
     TRY.
         oo_result = lo_fnt->listdistributions( ). " oo_result is returned for testing purposes. "
         DATA(lo_distribution_list) = oo_result->get_distributionlist( ).
         MESSAGE |Retrieved { lo_distribution_list->get_quantity( ) } CloudFront distributions| TYPE 'I'.
+
+        " Check if results are truncated; use NextMarker to retrieve additional pages.
+        IF lo_distribution_list->get_istruncated( ) = abap_true.
+          " Continue calling listdistributions with iv_marker = lo_distribution_list->get_nextmarker( )
+          " until get_istruncated( ) returns abap_false.
+          MESSAGE |Results truncated - use NextMarker to retrieve additional distributions| TYPE 'I'.
+        ENDIF.
       CATCH /aws1/cx_fntinvalidargument.
-        MESSAGE 'Invalid argument provided.' TYPE 'E'.
+        MESSAGE 'Invalid argument provided.' TYPE 'I'.
     ENDTRY.
     " snippet-end:[fnt.abapv1.list_distributions]
 
@@ -52,12 +60,11 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
 
   METHOD update_distribution.
 
+    " snippet-start:[fnt.abapv1.update_distribution]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
-
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.update_distribution]
     TRY.
         " Get the current distribution configuration and ETag "
         DATA(lo_distribution_config_result) = lo_fnt->getdistributionconfig( iv_id = iv_distribution_id ).
@@ -86,17 +93,17 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
           iv_isipv6enabled = lo_old_config->get_isipv6enabled( ) ).
 
         " Update the distribution with the modified configuration "
-        lo_fnt->updatedistribution(
+        oo_result = lo_fnt->updatedistribution(     " oo_result is returned for testing purposes. "
           io_distributionconfig = lo_new_config
           iv_id = iv_distribution_id
           iv_ifmatch = lv_etag ).
-        MESSAGE 'CloudFront distribution updated successfully.' TYPE 'I'.
+        MESSAGE |CloudFront distribution { iv_distribution_id } updated with comment: { iv_comment }| TYPE 'I'.
       CATCH /aws1/cx_fntnosuchdistribution.
-        MESSAGE 'Distribution does not exist.' TYPE 'E'.
+        MESSAGE 'Distribution does not exist.' TYPE 'I'.
       CATCH /aws1/cx_fntpreconditionfailed.
-        MESSAGE 'Precondition failed - ETag mismatch.' TYPE 'E'.
+        MESSAGE 'Precondition failed - ETag mismatch.' TYPE 'I'.
       CATCH /aws1/cx_fntinvalidifmatchvrs.
-        MESSAGE 'Invalid If-Match version.' TYPE 'E'.
+        MESSAGE 'Invalid If-Match version.' TYPE 'I'.
     ENDTRY.
     " snippet-end:[fnt.abapv1.update_distribution]
 
