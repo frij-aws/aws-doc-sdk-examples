@@ -357,18 +357,38 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       iv_sql     = |SELECT * FROM 'iot/test/{ iv_rule_name }'|
       it_actions = lt_actions ).
 
-    TRY.
-        " Topic rules support tagging at creation via iv_tags (URL-encoded)
-        ao_iot->createtopicrule(
-          iv_rulename         = iv_rule_name
-          io_topicrulepayload = lo_payload
-          iv_tags             = 'convert_test=true' ).
-      CATCH /aws1/cx_iotresrcalrdyexistsex.
-        " Already exists from a previous interrupted run — that's fine.
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
-        cl_abap_unit_assert=>fail(
-          msg = |class_setup: cannot create rule { iv_rule_name }: { lo_ex->get_text( ) }| ).
-    ENDTRY.
+    " IAM roles take up to ~15 s to propagate before IoT can assume them.
+    " Retry on InvalidRequestException (the assume-role error) up to 8 times
+    " with a 5-second wait between attempts (40 s max).
+    DATA lv_retry  TYPE i VALUE 0.
+    DATA lv_done   TYPE abap_bool VALUE abap_false.
+
+    WHILE lv_retry <= 8 AND lv_done = abap_false.
+      TRY.
+          " Topic rules support tagging at creation via iv_tags (URL-encoded)
+          ao_iot->createtopicrule(
+            iv_rulename         = iv_rule_name
+            io_topicrulepayload = lo_payload
+            iv_tags             = 'convert_test=true' ).
+          lv_done = abap_true.
+        CATCH /aws1/cx_iotresrcalrdyexistsex.
+          lv_done = abap_true.   " exists from a previous interrupted run
+        CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_inv).
+          " IoT returns InvalidRequestException when the role is not yet
+          " assumable.  Wait and retry; fail only after all attempts exhausted.
+          lv_retry = lv_retry + 1.
+          IF lv_retry > 8.
+            cl_abap_unit_assert=>fail(
+              msg = |class_setup: cannot create rule { iv_rule_name } after| &&
+                    | { lv_retry } attempts: { lo_inv->get_text( ) }| ).
+          ELSE.
+            WAIT UP TO 5 SECONDS.
+          ENDIF.
+        CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
+          cl_abap_unit_assert=>fail(
+            msg = |class_setup: cannot create rule { iv_rule_name }: { lo_ex->get_text( ) }| ).
+      ENDTRY.
+    ENDWHILE.
   ENDMETHOD.
 
 
