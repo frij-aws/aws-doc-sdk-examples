@@ -40,7 +40,8 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
     " snippet-start:[fnt.abapv1.list_distributions]
     TRY.
         oo_result = lo_fnt->listdistributions( ). " oo_result is returned for testing purposes. "
-        MESSAGE 'Retrieved list of CloudFront distributions.' TYPE 'I'.
+        DATA(lo_distribution_list) = oo_result->get_distributionlist( ).
+        MESSAGE |Retrieved { lo_distribution_list->get_quantity( ) } CloudFront distributions| TYPE 'I'.
       CATCH /aws1/cx_fntinvalidargument.
         MESSAGE 'Invalid argument provided.' TYPE 'E'.
     ENDTRY.
