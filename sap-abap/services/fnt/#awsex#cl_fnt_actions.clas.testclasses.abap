@@ -26,8 +26,10 @@ CLASS ltc_awsex_cl_fnt_actions DEFINITION
 
     CLASS-METHODS class_setup
       RAISING /aws1/cx_rt_generic.
-    CLASS-METHODS class_teardown
-      RAISING /aws1/cx_rt_generic.
+
+    " Issue 7 fix: class_teardown must NOT declare RAISING — all exceptions
+    " must be caught internally so that every cleanup step runs independently.
+    CLASS-METHODS class_teardown.
 
     " Wait for a distribution to reach the 'Deployed' status.
     " Fails the test if the timeout (30 minutes) is exceeded.
@@ -105,19 +107,32 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     " remains tagged with convert_test=true so it can be found and
     " cleaned up manually or by an automated cleanup job.
     "
-    " Attempted best-effort cleanup:
+    " Issue 6 & 7 fix: each cleanup step is wrapped in its own TRY/CATCH
+    " so that a failure in one step does not prevent subsequent steps from
+    " running, and no exception escapes this method.
+
     IF av_distribution_id IS INITIAL.
       RETURN.
     ENDIF.
 
+    " Step 1 – retrieve current config + ETag.
+    DATA lo_dist_cfg  TYPE REF TO /aws1/cl_fntdistributionconfig.
+    DATA lv_etag      TYPE /aws1/fntstring.
     TRY.
-        " Step 1 – retrieve current config + ETag.
         DATA(lo_cfg_resp) = ao_fnt->getdistributionconfig(
           iv_id = av_distribution_id ).
-        DATA(lo_dist_cfg) = lo_cfg_resp->get_distributionconfig( ).
-        DATA(lv_etag)     = lo_cfg_resp->get_etag( ).
+        lo_dist_cfg = lo_cfg_resp->get_distributionconfig( ).
+        lv_etag     = lo_cfg_resp->get_etag( ).
+      CATCH /aws1/cx_fntclientexc
+            /aws1/cx_fntserverexc
+            /aws1/cx_rt_technical_generic
+            /aws1/cx_rt_service_generic.
+        " Cannot retrieve config — distribution is tagged; clean up manually.
+        RETURN.
+    ENDTRY.
 
-        " Step 2 – disable the distribution.
+    " Step 2 – disable the distribution so it can later be deleted.
+    TRY.
         DATA(lo_disabled_cfg) = NEW /aws1/cl_fntdistributionconfig(
           iv_callerreference      = lo_dist_cfg->get_callerreference( )
           io_aliases              = lo_dist_cfg->get_aliases( )
@@ -137,27 +152,50 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           iv_httpversion          = lo_dist_cfg->get_httpversion( )
           iv_isipv6enabled        = lo_dist_cfg->get_isipv6enabled( ) ).
 
-        DATA(lo_upd_rs) = ao_fnt->updatedistribution(
+        ao_fnt->updatedistribution(
           io_distributionconfig = lo_disabled_cfg
           iv_id                 = av_distribution_id
           iv_ifmatch            = lv_etag ).
-
-        " Step 3 – wait for Deployed after disabling (~15 min).
-        wait_for_deployed( av_distribution_id ).
-
-        " Step 4 – delete the now-disabled distribution.
-        DATA(lo_del_cfg) = ao_fnt->getdistributionconfig(
-          iv_id = av_distribution_id ).
-        ao_fnt->deletedistribution(
-          iv_id      = av_distribution_id
-          iv_ifmatch = lo_del_cfg->get_etag( ) ).
-
       CATCH /aws1/cx_fntclientexc
             /aws1/cx_fntserverexc
             /aws1/cx_rt_technical_generic
             /aws1/cx_rt_service_generic.
-        " Teardown failed. The distribution is tagged convert_test=true
-        " and must be cleaned up manually.
+        " Disable update failed — distribution is tagged; clean up manually.
+        RETURN.
+    ENDTRY.
+
+    " Step 3 – wait for Deployed state after disabling (~15 min).
+    TRY.
+        wait_for_deployed( av_distribution_id ).
+      CATCH /aws1/cx_rt_generic.
+        " Timeout waiting for Deployed — distribution is tagged; clean up manually.
+        RETURN.
+    ENDTRY.
+
+    " Step 4 – re-fetch the ETag (it changed after the disable update).
+    DATA lv_delete_etag TYPE /aws1/fntstring.
+    TRY.
+        DATA(lo_del_cfg_resp) = ao_fnt->getdistributionconfig(
+          iv_id = av_distribution_id ).
+        lv_delete_etag = lo_del_cfg_resp->get_etag( ).
+      CATCH /aws1/cx_fntclientexc
+            /aws1/cx_fntserverexc
+            /aws1/cx_rt_technical_generic
+            /aws1/cx_rt_service_generic.
+        " Cannot retrieve updated ETag — distribution is tagged; clean up manually.
+        RETURN.
+    ENDTRY.
+
+    " Step 5 – delete the now-disabled distribution.
+    TRY.
+        ao_fnt->deletedistribution(
+          iv_id      = av_distribution_id
+          iv_ifmatch = lv_delete_etag ).
+      CATCH /aws1/cx_fntclientexc
+            /aws1/cx_fntserverexc
+            /aws1/cx_rt_technical_generic
+            /aws1/cx_rt_service_generic.
+        " Delete failed — distribution is tagged; clean up manually.
     ENDTRY.
   ENDMETHOD.
 
@@ -181,7 +219,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       act = lo_result->get_distributionlist( )
       msg = 'DistributionList must be bound' ).
 
-    " Verify the distribution we created is present in the list.
+    " Verify the distribution created in class_setup appears in the list.
     DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lo_result->get_distributionlist( )->get_items( )
       INTO DATA(lo_item).
@@ -199,8 +237,10 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
 
   " -----------------------------------------------------------------------
   " Test: update_distribution
-  " Changes the distribution comment, verifies the change, then restores
-  " the original comment so the distribution is left in a clean state.
+  " Changes the distribution comment, asserts on the RETURNING value
+  " (ETag from the UpdateDistribution response), verifies the stored
+  " comment via a follow-up GetDistributionConfig call, then restores
+  " the original comment so teardown sees a clean state.
   " -----------------------------------------------------------------------
   METHOD update_distribution.
     " Save the current comment so we can restore it afterwards.
@@ -214,14 +254,28 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     DATA lv_new_comment TYPE /aws1/fntcommenttype.
     lv_new_comment = 'SAP ABAP SDK convert_test updated comment'.
 
+    " Issue 5 fix: capture and assert on the RETURNING value directly.
+    DATA lo_upd_result TYPE REF TO /aws1/cl_fntupdistributionrs.
     ao_actions->update_distribution(
-      iv_distribution_id = av_distribution_id
-      iv_comment         = lv_new_comment ).
+      EXPORTING
+        iv_distribution_id = av_distribution_id
+        iv_comment         = lv_new_comment
+      RECEIVING
+        oo_result          = lo_upd_result ).
 
-    " Poll until Deployed so we can read back the definitive config.
+    " The UpdateDistribution response must be bound and carry a non-empty ETag.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_upd_result
+      msg = 'update_distribution must return a bound result object' ).
+
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_upd_result->get_etag( )
+      msg = 'UpdateDistribution must return a non-empty ETag' ).
+
+    " Poll until Deployed so we can read back the definitive stored config.
     wait_for_deployed( av_distribution_id ).
 
-    " Verify the comment was stored correctly.
+    " Verify the comment was persisted correctly via a direct config read.
     DATA(lo_cfg_after) = ao_fnt->getdistributionconfig(
       iv_id = av_distribution_id ).
 
@@ -230,20 +284,19 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       act = lo_cfg_after->get_distributionconfig( )->get_comment( )
       msg = 'Distribution comment was not updated as expected' ).
 
-    " Restore the original comment.
+    " Restore the original comment so teardown can disable and delete cleanly.
+    " Issue 8 fix: the trailing wait_for_deployed after restore is removed —
+    " teardown already waits for Deployed before attempting deletion.
     ao_actions->update_distribution(
       iv_distribution_id = av_distribution_id
       iv_comment         = lv_orig_comment ).
-
-    " Wait for the restore to propagate so teardown sees a clean state.
-    wait_for_deployed( av_distribution_id ).
   ENDMETHOD.
 
 
   " -----------------------------------------------------------------------
   " Helper: build_distribution_config
   " Constructs the minimal /AWS1/CL_FNTDISTRIBUTIONCONFIG required to
-  " create a CloudFront distribution.  Uses example.com as an HTTP-only
+  " create a CloudFront distribution.  Uses example.com as an HTTPS
   " custom origin; no S3 bucket, ACM certificate, or VPC resource is
   " required.
   " -----------------------------------------------------------------------
