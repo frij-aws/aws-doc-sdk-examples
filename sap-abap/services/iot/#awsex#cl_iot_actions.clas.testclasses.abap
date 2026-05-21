@@ -8,12 +8,10 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
   PRIVATE SECTION.
     CONSTANTS cv_pfl           TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     CONSTANTS cv_convert_test  TYPE string              VALUE 'convert_test'.
-    CONSTANTS cv_iot_trust_ply TYPE string              VALUE
-      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":' &&
-      '{"Service":"iot.amazonaws.com"},"Action":"sts:AssumeRole"}]}'.
+    CONSTANTS cv_iot_trust_ply TYPE string VALUE
+      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"iot.amazonaws.com"},"Action":"sts:AssumeRole"}]}'.
     CONSTANTS cv_sns_publish_ply TYPE string VALUE
-      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",' &&
-      '"Action":"sns:Publish","Resource":"*"}]}'.
+      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sns:Publish","Resource":"*"}]}'.
     CONSTANTS cv_iot_inline_ply TYPE string VALUE 'sap-abap-iot-sns-policy'.
 
     " AWS service clients
