@@ -109,7 +109,7 @@ CLASS /awsex/cl_iot_actions DEFINITION
     " @raising /aws1/cx_rt_generic | Thrown when the operation fails
     METHODS list_topic_rules
       RETURNING
-        VALUE(ot_rules) TYPE /aws1/cl_iottopicrulelst=>tt_topicruleslist
+        VALUE(ot_rules) TYPE /aws1/cl_iottopicrulelistitem=>tt_topicrulelist
       RAISING
         /aws1/cx_rt_generic.
 
