@@ -9,6 +9,8 @@ CLASS /awsex/cl_se2_actions DEFINITION
     METHODS create_email_identity
       IMPORTING
         !iv_email_identity TYPE /aws1/se2identity
+      RETURNING
+        VALUE(oo_result)   TYPE REF TO /aws1/cl_se2createemailidrsp
       RAISING
         /aws1/cx_rt_generic.
 
@@ -119,9 +121,10 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
 
     " snippet-start:[se2.abapv1.create_email_identity]
     TRY.
-        lo_se2->createemailidentity(
+        oo_result = lo_se2->createemailidentity(
           iv_emailidentity = iv_email_identity ).
-        MESSAGE |Email identity created: { iv_email_identity }| TYPE 'I'.
+        MESSAGE |Email identity created: { iv_email_identity } | &&
+                |type: { oo_result->get_identitytype( ) }| TYPE 'I'.
       CATCH /aws1/cx_se2alreadyexistsex.
         MESSAGE |Email identity already exists: { iv_email_identity }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).

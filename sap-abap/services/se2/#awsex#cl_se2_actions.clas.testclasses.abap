@@ -265,15 +265,15 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     DATA(lv_suffix)   = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_identity) = |se2test{ lv_suffix(8) }@example.com|.
 
-    " Exercise the action method under test
-    ao_se2_actions->create_email_identity( lv_identity ).
+    " Exercise the action method and capture its RETURNING value directly
+    DATA(lo_result) = ao_se2_actions->create_email_identity( lv_identity ).
 
-    " Confirm the identity was actually registered by reading it back
-    DATA(lo_result) = ao_se2->getemailidentity( iv_emailidentity = lv_identity ).
+    " Assert on the returned object — no separate SDK read-back needed
     cl_abap_unit_assert=>assert_equals(
       act = lo_result->get_identitytype( )
       exp = 'EMAIL_ADDRESS'
-      msg = |Identity { lv_identity } was not created with type EMAIL_ADDRESS| ).
+      msg = |create_email_identity returned type { lo_result->get_identitytype( ) } | &&
+            |instead of EMAIL_ADDRESS for { lv_identity }| ).
 
     " Tag it so it can be found for manual cleanup if teardown is skipped
     TRY.
