@@ -31,12 +31,12 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
 
   METHOD list_distributions.
 
+    " snippet-start:[fnt.abapv1.listdistributions]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
 
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.listdistributions]
     TRY.
         oo_result = lo_fnt->listdistributions( ).
         DATA(lo_distribution_list) = oo_result->get_distributionlist( ).
@@ -50,12 +50,12 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
 
   METHOD update_distribution.
 
+    " snippet-start:[fnt.abapv1.updatedistribution]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
 
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.updatedistribution]
     TRY.
         " iv_distribution_id = 'E1PA6795UKMFR9'
         DATA(lo_config_result) = lo_fnt->getdistributionconfig(
