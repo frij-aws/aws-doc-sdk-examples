@@ -38,6 +38,7 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     " Topic rules
     CLASS-DATA av_rule_name    TYPE /aws1/iotrulename.    " created by create_topic_rule test
     CLASS-DATA av_del_rule     TYPE /aws1/iotrulename.    " consumed by delete_topic_rule test
+    CLASS-DATA av_probe_rule   TYPE /aws1/iotrulename.    " IAM-propagation probe; deleted in setup on success
 
     METHODS:
       create_thing                  FOR TESTING RAISING /aws1/cx_rt_generic,
@@ -164,6 +165,63 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       iv_policyname    = av_policy_name
       iv_policydocument = lv_policy_doc ).
 
+    " ── 1b. Wait for IAM role to propagate before using it in IoT rules ───
+    " IAM is eventually consistent. AWS IoT calls sts:AssumeRole when a topic
+    " rule is created, so the role must be fully visible to STS before we
+    " proceed. We poll by attempting a throwaway CreateTopicRule and retrying
+    " on InvalidRequestException ("unable to assume role"). Max wait ~90 s.
+    av_probe_rule = safe_rule_name(
+      iv_prefix = 'SapAbapProbe'
+      iv_rand   = lv_rand ).
+    DATA lv_role_ready  TYPE abap_bool VALUE abap_false.
+    DATA lv_iam_attempt TYPE i VALUE 0.
+
+    WHILE lv_iam_attempt < 18 AND lv_role_ready = abap_false.
+      TRY.
+          ao_iot->createtopicrule(
+            iv_rulename         = av_probe_rule
+            io_topicrulepayload = NEW /aws1/cl_iottopicrulepayload(
+              iv_sql     = |SELECT * FROM 'sap/abap/probe'|
+              it_actions = VALUE /aws1/cl_iotaction=>tt_actionlist(
+                ( NEW /aws1/cl_iotaction(
+                    io_sns = NEW /aws1/cl_iotsnsaction(
+                      " Use a placeholder SNS ARN for the probe — the rule
+                      " only needs to be accepted by IoT, not actually invoked.
+                      iv_targetarn = |arn:aws:sns:{ lv_region }:{ lv_account }:probe|
+                      iv_rolearn   = av_role_arn ) ) ) ) ) ).
+          " Rule was accepted — role is propagated. Clean up the probe rule.
+          lv_role_ready = abap_true.
+          TRY.
+              ao_iot->deletetopicrule( iv_rulename = av_probe_rule ).
+              CLEAR av_probe_rule.
+            CATCH /aws1/cx_rt_generic.
+          ENDTRY.
+        CATCH /aws1/cx_iotinvalidrequestex.
+          " "Unable to assume role" — role not yet propagated. Wait and retry.
+          lv_iam_attempt = lv_iam_attempt + 1.
+          WAIT UP TO 5 SECONDS.
+        CATCH /aws1/cx_iotresrcalrdyexistsex.
+          " Probe rule already exists from a previous aborted run — treat as ready.
+          lv_role_ready = abap_true.
+          TRY.
+              ao_iot->deletetopicrule( iv_rulename = av_probe_rule ).
+              CLEAR av_probe_rule.
+            CATCH /aws1/cx_rt_generic.
+          ENDTRY.
+        CATCH /aws1/cx_rt_generic INTO DATA(lo_probe_ex).
+          " Any other error on the probe is unexpected — fail setup immediately.
+          cl_abap_unit_assert=>fail(
+            |class_setup: unexpected error waiting for IAM role to propagate: | &&
+            lo_probe_ex->get_text( ) ).
+      ENDTRY.
+    ENDWHILE.
+
+    IF lv_role_ready = abap_false.
+      cl_abap_unit_assert=>fail(
+        |class_setup: IAM role { av_role_arn } did not become assumable by IoT | &&
+        |after { lv_iam_attempt * 5 } seconds| ).
+    ENDIF.
+
     " ── 2. SNS topic (real ARN needed for topic-rule action) ───────────────
     DATA(lo_sns_rsp) = ao_sns->createtopic(
       iv_name  = |sap-abap-iot-topic-{ lv_rand }|
@@ -266,6 +324,13 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     IF av_del_rule IS NOT INITIAL.
       TRY.
           ao_iot->deletetopicrule( iv_rulename = av_del_rule ).
+        CATCH /aws1/cx_rt_generic.
+      ENDTRY.
+    ENDIF.
+    " Probe rule: non-empty only if setup was aborted before it could be deleted
+    IF av_probe_rule IS NOT INITIAL.
+      TRY.
+          ao_iot->deletetopicrule( iv_rulename = av_probe_rule ).
         CATCH /aws1/cx_rt_generic.
       ENDTRY.
     ENDIF.
