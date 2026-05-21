@@ -447,26 +447,17 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       CATCH /aws1/cx_se2alreadyexistsex.
     ENDTRY.
 
-    ao_se2_actions->send_email_template(
+    DATA(lo_result) = ao_se2_actions->send_email_template(
       iv_from_email_address = av_verified_sender
       iv_to_email_address   = lv_recipient
       iv_template_name      = av_template_name
       iv_template_data      = '{"name":"ABAP Tester"}'
       iv_contact_list_name  = av_contact_list_name ).
 
-    " Verify the send succeeded by checking the contact still exists (no bounce)
-    DATA(lo_contacts) = ao_se2->listcontacts(
-      iv_contactlistname = av_contact_list_name ).
-    DATA(lv_found) = abap_false.
-    LOOP AT lo_contacts->get_contacts( ) INTO DATA(lo_c).
-      IF lo_c->get_emailaddress( ) = lv_recipient.
-        lv_found = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-    cl_abap_unit_assert=>assert_true(
-      act = lv_found
-      msg = |Recipient contact { lv_recipient } not found after send_email_template| ).
+    " A non-empty MessageId proves the API accepted and queued the message
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lo_result->get_messageid( )
+      msg = 'send_email_template must return a non-empty MessageId' ).
 
     " Clean up the contact we created
     TRY.
@@ -490,11 +481,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       iv_contactlistname = av_contact_list_name
       iv_emailaddress    = lv_contact ).
 
-    " Exercise the action method
-    DATA lo_result TYPE REF TO /aws1/cl_se2listcontactsrsp.
-    ao_se2_actions->list_contacts(
-      EXPORTING iv_contact_list_name = av_contact_list_name
-      IMPORTING oo_result            = lo_result ).
+    " Exercise the action method — RETURNING pattern, inline assignment
+    DATA(lo_result) = ao_se2_actions->list_contacts( av_contact_list_name ).
 
     cl_abap_unit_assert=>assert_bound(
       act = lo_result

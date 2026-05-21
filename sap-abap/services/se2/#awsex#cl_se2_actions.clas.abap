@@ -53,14 +53,16 @@ CLASS /awsex/cl_se2_actions DEFINITION
         !iv_template_name      TYPE /aws1/se2emailtemplatename
         !iv_template_data      TYPE /aws1/se2emailtemplatedata
         !iv_contact_list_name  TYPE /aws1/se2contactlistname
+      RETURNING
+        VALUE(oo_result)       TYPE REF TO /aws1/cl_se2sendemailresponse
       RAISING
         /aws1/cx_rt_generic.
 
     METHODS list_contacts
       IMPORTING
         !iv_contact_list_name TYPE /aws1/se2contactlistname
-      EXPORTING
-        !oo_result            TYPE REF TO /aws1/cl_se2listcontactsrsp
+      RETURNING
+        VALUE(oo_result)      TYPE REF TO /aws1/cl_se2listcontactsrsp
       RAISING
         /aws1/cx_rt_generic.
 
@@ -280,13 +282,13 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
           iv_contactlistname = iv_contact_list_name ).
 
         " Send the email using template
-        lo_se2->sendemail(
-          iv_fromemailaddress = iv_from_email_address
-          io_destination = lo_destination
-          io_content = lo_content
+        oo_result = lo_se2->sendemail(
+          iv_fromemailaddress      = iv_from_email_address
+          io_destination           = lo_destination
+          io_content               = lo_content
           io_listmanagementoptions = lo_list_mgmt ).
         MESSAGE |Template email sent from { iv_from_email_address } to { iv_to_email_address } | &&
-                |using template { iv_template_name }| TYPE 'I'.
+                |using template { iv_template_name } message ID: { oo_result->get_messageid( ) }| TYPE 'I'.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_account_suspended).
         MESSAGE lo_account_suspended TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_account_suspended.
@@ -311,12 +313,12 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
         oo_result = lo_se2->listcontacts(
           iv_contactlistname = iv_contact_list_name ).
         DATA(lv_count) = lines( oo_result->get_contacts( ) ).
-        MESSAGE |Retrieved { lv_count } contacts from list.| TYPE 'I'.
+        MESSAGE |Retrieved { lv_count } contacts from list { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
       CATCH /aws1/cx_se2notfoundexception INTO DATA(lo_not_found).
-        MESSAGE 'Contact list not found.' TYPE 'I'.
+        MESSAGE |Contact list not found: { iv_contact_list_name }| TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_not_found.
     ENDTRY.
     " snippet-end:[se2.abapv1.list_contacts]
