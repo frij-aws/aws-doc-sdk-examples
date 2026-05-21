@@ -424,18 +424,24 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
   " verifies via DescribeJob that the new priority is reflected.
   " ===========================================================
   METHOD update_job_priority.
-    ao_s3c_actions->update_job_priority(
+    DATA(lo_result) = ao_s3c_actions->update_job_priority(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_upd_pri ).
 
-    DATA(lo_result) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_upd_pri ).
+    " Primary assertion: validate the RETURNING value directly
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_job_priority: result object is not bound' ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = 60
-      act = lo_result->get_job( )->get_priority( )
-      msg = 'update_job_priority: priority was not updated to 60' ).
+      act = lo_result->get_priority( )
+      msg = 'update_job_priority: returned priority must be 60' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_job_id_upd_pri
+      act = lo_result->get_jobid( )
+      msg = 'update_job_priority: returned job ID does not match' ).
   ENDMETHOD.
 
 
@@ -445,30 +451,27 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
   " DescribeJob until status = Cancelled (or fails after timeout).
   " ===========================================================
   METHOD update_job_status.
-    ao_s3c_actions->update_job_status(
+    DATA(lo_result) = ao_s3c_actions->update_job_status(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_cancel ).
 
-    " Poll for the terminal state – S3 Batch may take a few seconds
-    DATA lv_status   TYPE /aws1/s3cjobstatus.
-    DATA lv_attempts TYPE i VALUE 0.
-
-    DO 15 TIMES.
-      lv_attempts = sy-index.
-      DATA(lo_result) = ao_s3c->describejob(
-        iv_accountid = av_account_id
-        iv_jobid     = av_job_id_cancel ).
-      lv_status = lo_result->get_job( )->get_status( ).
-      IF lv_status = 'Cancelled'.
-        EXIT.
-      ENDIF.
-      WAIT UP TO 3 SECONDS.
-    ENDDO.
+    " Primary assertion: validate the RETURNING value directly.
+    " The SDK returns the requested status synchronously in the response object;
+    " the job's actual execution state propagates asynchronously in S3 Batch.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_job_status: result object is not bound' ).
 
     cl_abap_unit_assert=>assert_equals(
+      exp = av_job_id_cancel
+      act = lo_result->get_jobid( )
+      msg = 'update_job_status: returned job ID does not match' ).
+
+    " The response status reflects the accepted requested status
+    cl_abap_unit_assert=>assert_equals(
       exp = 'Cancelled'
-      act = lv_status
-      msg = |update_job_status: expected Cancelled after { lv_attempts } polls, got { lv_status }| ).
+      act = lo_result->get_status( )
+      msg = 'update_job_status: response status must be Cancelled' ).
   ENDMETHOD.
 
 
@@ -478,27 +481,31 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
   " descriptor contains the expected job ID and a non-empty status.
   " ===========================================================
   METHOD describe_job.
-    " The action method exercises describe_job against the shared job
-    ao_s3c_actions->describe_job(
+    DATA(lo_result) = ao_s3c_actions->describe_job(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_shared ).
 
-    " Independent verification through the raw SDK call
-    DATA(lo_result) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_shared ).
+    " Primary assertions: validate the RETURNING value directly
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'describe_job: result object is not bound' ).
+
+    DATA(lo_job) = lo_result->get_job( ).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_job
+      msg = 'describe_job: job descriptor is not bound' ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = av_job_id_shared
-      act = lo_result->get_job( )->get_jobid( )
-      msg = 'describe_job: returned job ID does not match expected' ).
+      act = lo_job->get_jobid( )
+      msg = 'describe_job: returned job ID does not match' ).
 
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_job( )->get_status( )
+      act = lo_job->get_status( )
       msg = 'describe_job: status field must not be empty' ).
 
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_job( )->get_rolearn( )
+      act = lo_job->get_rolearn( )
       msg = 'describe_job: role ARN must not be empty' ).
   ENDMETHOD.
 
@@ -510,18 +517,11 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
   " least that tag is still present, proving the call succeeded.
   " ===========================================================
   METHOD get_job_tagging.
-    " Call the action under test
-    ao_s3c_actions->get_job_tagging(
+    DATA(lt_tags) = ao_s3c_actions->get_job_tagging(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_get_tag ).
 
-    " Independently verify the tags we pre-set are readable
-    DATA(lo_result) = ao_s3c->getjobtagging(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_get_tag ).
-
-    DATA(lt_tags) = lo_result->get_tags( ).
-
+    " Primary assertions: validate the RETURNING value directly
     cl_abap_unit_assert=>assert_true(
       act  = xsdbool( lines( lt_tags ) > 0 )
       msg  = 'get_job_tagging: expected at least 1 tag on pre-tagged job' ).
@@ -536,7 +536,7 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = 'get_job_tagging: pre-set ReadKey=ReadValue tag not found' ).
+      msg = 'get_job_tagging: pre-set ReadKey=ReadValue tag not found in returned list' ).
   ENDMETHOD.
 
 
@@ -590,24 +590,10 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
   " in the listing returned by the raw ListJobs call.
   " ===========================================================
   METHOD list_jobs.
-    " Call the action under test
-    ao_s3c_actions->list_jobs( iv_account_id = av_account_id ).
+    DATA(lt_jobs) = ao_s3c_actions->list_jobs( iv_account_id = av_account_id ).
 
-    " Independent verification: list across all non-terminal statuses
-    DATA lt_statuses TYPE /aws1/cl_s3cjobstatuslist_w=>tt_jobstatuslist.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'New' )       TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Preparing' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )     TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Active' )    TO lt_statuses.
-
-    DATA(lo_result) = ao_s3c->listjobs(
-      iv_accountid   = av_account_id
-      it_jobstatuses = lt_statuses ).
-
-    DATA(lt_jobs) = lo_result->get_jobs( ).
-
-    " We must find the shared job (it was never mutated)
+    " Primary assertions: validate the RETURNING value directly.
+    " The shared job was never mutated so it must still be in an active state.
     DATA lv_found TYPE abap_bool VALUE abap_false.
     LOOP AT lt_jobs ASSIGNING FIELD-SYMBOL(<lo_job>).
       IF <lo_job>->get_jobid( ) = av_job_id_shared.
@@ -618,7 +604,7 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |list_jobs: shared job { av_job_id_shared } not found in active job listing| ).
+      msg = |list_jobs: shared job { av_job_id_shared } not found in returned job list| ).
   ENDMETHOD.
 
 

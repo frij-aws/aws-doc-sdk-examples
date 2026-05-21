@@ -19,23 +19,31 @@ CLASS /awsex/cl_s3c_actions DEFINITION
 
     METHODS update_job_priority
       IMPORTING
-        iv_account_id TYPE /aws1/s3caccountid
-        iv_job_id     TYPE /aws1/s3cjobid.
+        iv_account_id  TYPE /aws1/s3caccountid
+        iv_job_id      TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobpriorityrslt.
 
     METHODS update_job_status
       IMPORTING
-        iv_account_id TYPE /aws1/s3caccountid
-        iv_job_id     TYPE /aws1/s3cjobid.
+        iv_account_id  TYPE /aws1/s3caccountid
+        iv_job_id      TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobstatusrslt.
 
     METHODS describe_job
       IMPORTING
-        iv_account_id TYPE /aws1/s3caccountid
-        iv_job_id     TYPE /aws1/s3cjobid.
+        iv_account_id  TYPE /aws1/s3caccountid
+        iv_job_id      TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cdescribejobresult.
 
     METHODS get_job_tagging
       IMPORTING
-        iv_account_id TYPE /aws1/s3caccountid
-        iv_job_id     TYPE /aws1/s3cjobid.
+        iv_account_id  TYPE /aws1/s3caccountid
+        iv_job_id      TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(ot_tags) TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
 
     METHODS put_job_tagging
       IMPORTING
@@ -44,7 +52,9 @@ CLASS /awsex/cl_s3c_actions DEFINITION
 
     METHODS list_jobs
       IMPORTING
-        iv_account_id TYPE /aws1/s3caccountid.
+        iv_account_id  TYPE /aws1/s3caccountid
+      RETURNING
+        VALUE(ot_jobs) TYPE /aws1/cl_s3cjoblistdescriptor=>tt_joblistdescriptorlist.
 
     METHODS delete_job_tagging
       IMPORTING
@@ -118,12 +128,12 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.update_job_priority]
     TRY.
-        lo_s3c->updatejobpriority(
+        oo_result = lo_s3c->updatejobpriority(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id
           iv_priority  = 60 ).
 
-        MESSAGE |Job { iv_job_id } priority updated to 60| TYPE 'I'.
+        MESSAGE |Job { iv_job_id } priority updated to { oo_result->get_priority( ) }| TYPE 'I'.
       CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
       CATCH /aws1/cx_s3cclientexc INTO DATA(lo_client_ex).
@@ -142,12 +152,12 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.update_job_status]
     TRY.
-        lo_s3c->updatejobstatus(
+        oo_result = lo_s3c->updatejobstatus(
           iv_accountid          = iv_account_id
           iv_jobid              = iv_job_id
           iv_requestedjobstatus = 'Cancelled' ).
 
-        MESSAGE |Job { iv_job_id } was successfully cancelled| TYPE 'I'.
+        MESSAGE |Job { iv_job_id } status is now { oo_result->get_status( ) }| TYPE 'I'.
       CATCH /aws1/cx_s3cjobstatusexception INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
       CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_nf_ex).
@@ -168,11 +178,11 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.describe_job]
     TRY.
-        DATA(lo_result) = lo_s3c->describejob(
+        oo_result = lo_s3c->describejob(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id ).
 
-        DATA(lo_job) = lo_result->get_job( ).
+        DATA(lo_job) = oo_result->get_job( ).
         DATA(lv_status)   = lo_job->get_status( ).
         DATA(lv_priority) = lo_job->get_priority( ).
         DATA(lv_role_arn) = lo_job->get_rolearn( ).
@@ -211,8 +221,8 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id ).
 
-        DATA(lt_tags) = lo_result->get_tags( ).
-        MESSAGE |Retrieved { lines( lt_tags ) } tag(s) for job { iv_job_id }| TYPE 'I'.
+        ot_tags = lo_result->get_tags( ).
+        MESSAGE |Retrieved { lines( ot_tags ) } tag(s) for job { iv_job_id }| TYPE 'I'.
       CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
       CATCH /aws1/cx_s3cclientexc INTO DATA(lo_client_ex).
@@ -281,8 +291,8 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           iv_accountid   = iv_account_id
           it_jobstatuses = lt_statuses ).
 
-        DATA(lt_jobs) = lo_result->get_jobs( ).
-        MESSAGE |Retrieved { lines( lt_jobs ) } S3 Batch job(s)| TYPE 'I'.
+        ot_jobs = lo_result->get_jobs( ).
+        MESSAGE |Retrieved { lines( ot_jobs ) } S3 Batch job(s)| TYPE 'I'.
       CATCH /aws1/cx_s3cinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
       CATCH /aws1/cx_s3cclientexc INTO DATA(lo_client_ex).
