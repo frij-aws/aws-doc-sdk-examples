@@ -16,8 +16,12 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-DATA ao_se2_actions  TYPE REF TO /awsex/cl_se2_actions.
 
     " ── Shared resources created in class_setup ──────────────────────────────
-    " A pre-verified sending-enabled identity discovered in the account
-    CLASS-DATA av_verified_sender   TYPE /aws1/se2emailaddress.
+    " The SES mailbox simulator FROM address — pre-verified in every AWS account,
+    " works in sandbox without any manual verification step.
+    " Docs: https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html
+    CONSTANTS cv_simulator_from TYPE /aws1/se2emailaddress
+              VALUE 'success@simulator.amazonses.com'.
+
     " Contact list shared by most tests (SES sandbox: max 1 list)
     CLASS-DATA av_contact_list_name TYPE /aws1/se2contactlistname.
     " Email template shared by template / bulk-send tests
@@ -52,10 +56,6 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-METHODS ensure_ses_policy_on_role
       RAISING /aws1/cx_rt_generic.
 
-    CLASS-METHODS find_verified_sender
-      RETURNING VALUE(rv_identity) TYPE /aws1/se2emailaddress
-      RAISING   /aws1/cx_rt_generic.
-
 ENDCLASS.
 
 
@@ -77,8 +77,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     " ── Derive the IAM role name via STS GetCallerIdentity ───────────────────
     " ARN format for assumed roles:
     "   arn:aws:sts::<account>:assumed-role/<role-name>/<session-name>
-    DATA(lo_identity) = ao_sts->getcalleridentity( ).
-    DATA(lv_caller_arn) = lo_identity->get_arn( ).
+    DATA(lo_caller) = ao_sts->getcalleridentity( ).
+    DATA(lv_caller_arn) = lo_caller->get_arn( ).
     SPLIT lv_caller_arn AT '/' INTO TABLE DATA(lt_arn_parts).
     IF lines( lt_arn_parts ) >= 2.
       READ TABLE lt_arn_parts INDEX 2 INTO av_role_name.
@@ -91,15 +91,18 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     " ── Attach ses:* inline policy so all SES API calls succeed ──────────────
     ensure_ses_policy_on_role( ).
 
-    " ── Locate a verified sending-enabled identity (required for sends) ──────
-    av_verified_sender = find_verified_sender( ).
-    IF av_verified_sender IS INITIAL.
-      cl_abap_unit_assert=>fail(
-        msg = 'No verified SESv2 email identity found in this account. '  &&
-              'Please verify at least one email address or domain in the ' &&
-              'SES console before running these tests.' ).
-    ENDIF.
-    MESSAGE |Using verified sender: { av_verified_sender }| TYPE 'I'.
+    " ── Register the simulator FROM address as an email identity ─────────────
+    " success@simulator.amazonses.com is a special AWS-managed address that
+    " is automatically verified for sending in every account, including sandbox.
+    " We register it as an identity so the action-method examples can reference
+    " it as a sender without any manual email verification step.
+    TRY.
+        ao_se2->createemailidentity(
+          iv_emailidentity = cv_simulator_from ).
+        MESSAGE |Registered simulator identity: { cv_simulator_from }| TYPE 'I'.
+      CATCH /aws1/cx_se2alreadyexistsex.
+        " Already registered — fine, it is still verified.
+    ENDTRY.
 
     " ── Create the shared contact list ───────────────────────────────────────
     " SES sandbox allows only 1 contact list; fall back to the existing one
@@ -121,7 +124,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         DATA(lo_all_lists) = ao_se2->listcontactlists( ).
         IF lines( lo_all_lists->get_contactlists( ) ) = 0.
           cl_abap_unit_assert=>fail(
-            msg = |Sandbox contact-list limit hit and no lists exist: { lo_limit_req->get_text( ) }| ).
+            msg = |Sandbox contact-list limit hit and no lists exist: | &&
+                  lo_limit_req->get_text( ) ).
         ENDIF.
         LOOP AT lo_all_lists->get_contactlists( ) INTO DATA(lo_list_entry).
           av_contact_list_name = lo_list_entry->get_contactlistname( ).
@@ -198,6 +202,13 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         MESSAGE |Could not delete template: { lo_ex2->get_text( ) }| TYPE 'I'.
     ENDTRY.
 
+    " ── Delete the simulator identity we registered ──────────────────────────
+    TRY.
+        ao_se2->deleteemailidentity( iv_emailidentity = cv_simulator_from ).
+      CATCH /aws1/cx_se2notfoundexception.
+      CATCH /aws1/cx_rt_generic.
+    ENDTRY.
+
     " ── Remove the inline IAM policy we added ────────────────────────────────
     TRY.
         ao_iam->deleterolepolicy(
@@ -237,27 +248,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         " Non-fatal: the role may already carry broad permissions.
         MESSAGE |Could not attach SES policy (continuing): { lo_ex->get_text( ) }| TYPE 'I'.
     ENDTRY.
-  ENDMETHOD.
-
-  METHOD find_verified_sender.
-    " Return the first identity whose sending is enabled, or the first
-    " one with verification status SUCCESS.  Return '' if none found.
-    rv_identity = ''.
-    DATA(lo_list) = ao_se2->listemailidentities( ).
-    " Prefer an identity explicitly enabled for sending
-    LOOP AT lo_list->get_emailidentities( ) INTO DATA(lo_id).
-      IF lo_id->get_sendingenabled( ) = abap_true.
-        rv_identity = lo_id->get_identityname( ).
-        RETURN.
-      ENDIF.
-    ENDLOOP.
-    " Fall back to any SUCCESS-verified identity
-    LOOP AT lo_list->get_emailidentities( ) INTO DATA(lo_id2).
-      IF lo_id2->get_verificationstatus( ) = 'SUCCESS'.
-        rv_identity = lo_id2->get_identityname( ).
-        RETURN.
-      ENDIF.
-    ENDLOOP.
   ENDMETHOD.
 
 
@@ -418,11 +408,11 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
 * ─────────────────────────────────────────────────────────────────────────────
   METHOD send_email.
     DATA(lv_suffix)    = /awsex/cl_utils=>get_random_string( ).
-    " success@ simulator always accepts mail; +tag makes address unique
+    " Both sender and recipient are simulator addresses — no verification needed
     DATA(lv_recipient) = |success+send{ lv_suffix(8) }@simulator.amazonses.com|.
 
     DATA(lo_result) = ao_se2_actions->send_email(
-      iv_from_email_address = av_verified_sender
+      iv_from_email_address = cv_simulator_from
       iv_to_email_address   = lv_recipient
       iv_subject            = |SAP ABAP SDK test – send_email { lv_suffix }|
       iv_html_body          = '<html><body><p>Test email from ABAP SDK.</p></body></html>'
@@ -451,7 +441,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     ENDTRY.
 
     DATA(lo_result) = ao_se2_actions->send_email_template(
-      iv_from_email_address = av_verified_sender
+      iv_from_email_address = cv_simulator_from
       iv_to_email_address   = lv_recipient
       iv_template_name      = av_template_name
       iv_template_data      = '{"name":"ABAP Tester"}'
@@ -690,7 +680,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
       iv_value = |success+b2{ lv_sfx2(8) }@simulator.amazonses.com| ) TO lt_to.
 
     DATA(lo_result) = ao_se2_actions->send_bulk_email(
-      iv_from_address  = av_verified_sender
+      iv_from_address  = cv_simulator_from
       iv_template_name = av_template_name
       iv_template_data = '{"name":"Bulk Tester"}'
       it_to_addresses  = lt_to ).
