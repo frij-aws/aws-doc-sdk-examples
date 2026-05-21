@@ -41,6 +41,8 @@ CLASS /awsex/cl_se2_actions DEFINITION
         !iv_subject            TYPE /aws1/se2messagedata
         !iv_html_body          TYPE /aws1/se2messagedata
         !iv_text_body          TYPE /aws1/se2messagedata
+      RETURNING
+        VALUE(oo_result)       TYPE REF TO /aws1/cl_se2sendemailresponse
       RAISING
         /aws1/cx_rt_generic.
 
@@ -94,6 +96,8 @@ CLASS /awsex/cl_se2_actions DEFINITION
         !iv_template_name   TYPE /aws1/se2emailtemplatename
         !iv_template_data   TYPE /aws1/se2emailtemplatedata
         !it_to_addresses    TYPE /aws1/cl_se2emailaddresslist_w=>tt_emailaddresslist
+      RETURNING
+        VALUE(oo_result)    TYPE REF TO /aws1/cl_se2sendbulkemailrsp
       RAISING
         /aws1/cx_rt_generic.
 
@@ -115,9 +119,9 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
     TRY.
         lo_se2->createemailidentity(
           iv_emailidentity = iv_email_identity ).
-        MESSAGE 'Email identity created successfully.' TYPE 'I'.
+        MESSAGE |Email identity created: { iv_email_identity }| TYPE 'I'.
       CATCH /aws1/cx_se2alreadyexistsex.
-        MESSAGE 'Email identity already exists.' TYPE 'I'.
+        MESSAGE |Email identity already exists: { iv_email_identity }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
         MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
       CATCH /aws1/cx_se2limitexceededex INTO DATA(lo_limit_exceeded).
@@ -136,15 +140,15 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
     TRY.
         lo_se2->createcontactlist(
           iv_contactlistname = iv_contact_list_name ).
-        MESSAGE 'Contact list created successfully.' TYPE 'I'.
+        MESSAGE |Contact list created: { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2alreadyexistsex.
-        MESSAGE 'Contact list already exists.' TYPE 'I'.
+        MESSAGE |Contact list already exists: { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request - contact list limit may be reached.' TYPE 'I'.
+        MESSAGE |Contact list limit reached: { lo_bad_request->get_text( ) }| TYPE 'I'.
         " Re-raise the exception so the caller can handle it
         RAISE EXCEPTION lo_bad_request.
       CATCH /aws1/cx_se2limitexceededex INTO DATA(lo_limit_exceeded).
-        MESSAGE 'Limit exceeded - contact list limit reached.' TYPE 'I'.
+        MESSAGE |Contact list limit exceeded: { lo_limit_exceeded->get_text( ) }| TYPE 'I'.
         " Re-raise the exception so the caller can handle it
         RAISE EXCEPTION lo_limit_exceeded.
     ENDTRY.
@@ -167,13 +171,13 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
         lo_se2->createemailtemplate(
           iv_templatename = iv_template_name
           io_templatecontent = lo_template_content ).
-        MESSAGE 'Email template created successfully.' TYPE 'I'.
+        MESSAGE |Email template created: { iv_template_name }| TYPE 'I'.
       CATCH /aws1/cx_se2alreadyexistsex.
-        MESSAGE 'Email template already exists.' TYPE 'I'.
-      CATCH /aws1/cx_se2badrequestex.
-        MESSAGE 'Bad request.' TYPE 'E'.
-      CATCH /aws1/cx_se2limitexceededex.
-        MESSAGE 'Limit exceeded.' TYPE 'E'.
+        MESSAGE |Email template already exists: { iv_template_name }| TYPE 'I'.
+      CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
+      CATCH /aws1/cx_se2limitexceededex INTO DATA(lo_limit_exceeded).
+        MESSAGE lo_limit_exceeded TYPE 'I' DISPLAY LIKE 'E'.
     ENDTRY.
     " snippet-end:[se2.abapv1.create_email_template]
   ENDMETHOD.
@@ -189,13 +193,14 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
         lo_se2->createcontact(
           iv_contactlistname = iv_contact_list_name
           iv_emailaddress = iv_email_address ).
-        MESSAGE 'Contact created successfully.' TYPE 'I'.
+        MESSAGE |Contact { iv_email_address } added to list { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2alreadyexistsex.
-        MESSAGE 'Contact already exists.' TYPE 'I'.
-      CATCH /aws1/cx_se2badrequestex.
-        MESSAGE 'Bad request.' TYPE 'E'.
-      CATCH /aws1/cx_se2notfoundexception.
-        MESSAGE 'Contact list not found.' TYPE 'E'.
+        MESSAGE |Contact already exists: { iv_email_address }| TYPE 'I'.
+      CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
+      CATCH /aws1/cx_se2notfoundexception INTO DATA(lo_not_found).
+        MESSAGE |Contact list not found: { iv_contact_list_name }| TYPE 'I' DISPLAY LIKE 'E'.
+        RAISE EXCEPTION lo_not_found.
     ENDTRY.
     " snippet-end:[se2.abapv1.create_contact]
   ENDMETHOD.
@@ -229,19 +234,20 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
           io_simple = lo_message ).
 
         " Send the email
-        lo_se2->sendemail(
+        oo_result = lo_se2->sendemail(
           iv_fromemailaddress = iv_from_email_address
           io_destination = lo_destination
           io_content = lo_content ).
-        MESSAGE 'Email sent successfully.' TYPE 'I'.
+        MESSAGE |Email sent from { iv_from_email_address } to { iv_to_email_address } | &&
+                |message ID: { oo_result->get_messageid( ) }| TYPE 'I'.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_account_suspended).
-        MESSAGE 'Account suspended.' TYPE 'I'.
+        MESSAGE lo_account_suspended TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_account_suspended.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
       CATCH /aws1/cx_se2messagerejected INTO DATA(lo_message_rejected).
-        MESSAGE 'Message rejected - check email verification.' TYPE 'I'.
+        MESSAGE lo_message_rejected TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_message_rejected.
     ENDTRY.
     " snippet-end:[se2.abapv1.send_email]
@@ -279,15 +285,16 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
           io_destination = lo_destination
           io_content = lo_content
           io_listmanagementoptions = lo_list_mgmt ).
-        MESSAGE 'Email sent using template successfully.' TYPE 'I'.
+        MESSAGE |Template email sent from { iv_from_email_address } to { iv_to_email_address } | &&
+                |using template { iv_template_name }| TYPE 'I'.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_account_suspended).
-        MESSAGE 'Account suspended.' TYPE 'I'.
+        MESSAGE lo_account_suspended TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_account_suspended.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
       CATCH /aws1/cx_se2messagerejected INTO DATA(lo_message_rejected).
-        MESSAGE 'Message rejected - check email verification.' TYPE 'I'.
+        MESSAGE lo_message_rejected TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_message_rejected.
     ENDTRY.
     " snippet-end:[se2.abapv1.send_email_template]
@@ -325,11 +332,11 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
     TRY.
         lo_se2->deletecontactlist(
           iv_contactlistname = iv_contact_list_name ).
-        MESSAGE 'Contact list deleted successfully.' TYPE 'I'.
+        MESSAGE |Contact list deleted: { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2notfoundexception.
-        MESSAGE 'Contact list not found.' TYPE 'I'.
+        MESSAGE |Contact list not found: { iv_contact_list_name }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
     ENDTRY.
     " snippet-end:[se2.abapv1.delete_contact_list]
@@ -345,11 +352,11 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
     TRY.
         lo_se2->deleteemailtemplate(
           iv_templatename = iv_template_name ).
-        MESSAGE 'Email template deleted successfully.' TYPE 'I'.
+        MESSAGE |Email template deleted: { iv_template_name }| TYPE 'I'.
       CATCH /aws1/cx_se2notfoundexception.
-        MESSAGE 'Email template not found.' TYPE 'I'.
+        MESSAGE |Email template not found: { iv_template_name }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
     ENDTRY.
     " snippet-end:[se2.abapv1.delete_email_template]
@@ -365,11 +372,11 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
     TRY.
         lo_se2->deleteemailidentity(
           iv_emailidentity = iv_email_identity ).
-        MESSAGE 'Email identity deleted successfully.' TYPE 'I'.
+        MESSAGE |Email identity deleted: { iv_email_identity }| TYPE 'I'.
       CATCH /aws1/cx_se2notfoundexception.
-        MESSAGE 'Email identity not found.' TYPE 'I'.
+        MESSAGE |Email identity not found: { iv_email_identity }| TYPE 'I'.
       CATCH /aws1/cx_se2badrequestex INTO DATA(lo_bad_request).
-        MESSAGE 'Bad request.' TYPE 'I'.
+        MESSAGE lo_bad_request TYPE 'I' DISPLAY LIKE 'E'.
         RAISE EXCEPTION lo_bad_request.
     ENDTRY.
     " snippet-end:[se2.abapv1.delete_email_identity]
@@ -422,7 +429,7 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
             iv_templatename = iv_template_name
             iv_templatedata = iv_template_data ) ).
 
-        DATA(lo_result) = lo_se2->sendbulkemail(
+        oo_result = lo_se2->sendbulkemail(
           iv_fromemailaddress = iv_from_address
           io_defaultcontent   = lo_default_content
           it_bulkemailentries = lt_entries ).
