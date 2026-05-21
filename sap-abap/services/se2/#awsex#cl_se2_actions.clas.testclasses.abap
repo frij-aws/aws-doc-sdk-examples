@@ -11,6 +11,7 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     " ── Shared class-level AWS clients ───────────────────────────────────────
     CLASS-DATA ao_se2          TYPE REF TO /aws1/if_se2.
     CLASS-DATA ao_iam          TYPE REF TO /aws1/if_iam.
+    CLASS-DATA ao_sts          TYPE REF TO /aws1/if_sts.
     CLASS-DATA ao_session      TYPE REF TO /aws1/cl_rt_session_base.
     CLASS-DATA ao_se2_actions  TYPE REF TO /awsex/cl_se2_actions.
 
@@ -23,7 +24,7 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-DATA av_template_name     TYPE /aws1/se2emailtemplatename.
     " Unique run suffix used in all resource names
     CLASS-DATA av_run_suffix        TYPE string.
-    " IAM role name of the execution role (extracted from session ARN)
+    " IAM role name of the execution role (extracted via STS GetCallerIdentity)
     CLASS-DATA av_role_name         TYPE /aws1/iamrolenametype.
 
     " ── Test method declarations ─────────────────────────────────────────────
@@ -67,15 +68,17 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     ao_session    = /aws1/cl_rt_session_aws=>create( iv_profile_id = cv_pfl ).
     ao_se2        = /aws1/cl_se2_factory=>create( ao_session ).
     ao_iam        = /aws1/cl_iam_factory=>create( ao_session ).
+    ao_sts        = /aws1/cl_sts_factory=>create( ao_session ).
     ao_se2_actions = NEW /awsex/cl_se2_actions( ).
 
     " ── Unique suffix for this test run ──────────────────────────────────────
     av_run_suffix = /awsex/cl_utils=>get_random_string( ).
 
-    " ── Extract IAM role name from the caller ARN ────────────────────────────
+    " ── Derive the IAM role name via STS GetCallerIdentity ───────────────────
     " ARN format for assumed roles:
     "   arn:aws:sts::<account>:assumed-role/<role-name>/<session-name>
-    DATA(lv_caller_arn) = ao_session->get_caller_identity_arn( ).
+    DATA(lo_identity) = ao_sts->getcalleridentity( ).
+    DATA(lv_caller_arn) = lo_identity->get_arn( ).
     SPLIT lv_caller_arn AT '/' INTO TABLE DATA(lt_arn_parts).
     IF lines( lt_arn_parts ) >= 2.
       READ TABLE lt_arn_parts INDEX 2 INTO av_role_name.
