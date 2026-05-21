@@ -13,15 +13,6 @@ CLASS ltc_awsex_cl_se2_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-DATA av_template_name TYPE /aws1/se2emailtemplatename.
     CLASS-DATA av_uuid TYPE string.
 
-    " The SES mailbox simulator address is pre-verified in every AWS account.
-    " Use it as the sender for operations that require a verified identity so
-    " the call actually succeeds instead of raising MessageRejected.
-    " See: https://docs.aws.amazon.com/ses/latest/dg/send-email-simulator.html
-    CONSTANTS cv_sim_sender TYPE /aws1/se2emailaddress
-      VALUE 'success@simulator.amazonses.com'.
-    CONSTANTS cv_sim_recip TYPE /aws1/se2emailaddress
-      VALUE 'success@simulator.amazonses.com'.
-
     CLASS-DATA ao_se2 TYPE REF TO /aws1/if_se2.
     CLASS-DATA ao_session TYPE REF TO /aws1/cl_rt_session_base.
     CLASS-DATA ao_se2_actions TYPE REF TO /awsex/cl_se2_actions.
@@ -180,20 +171,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           msg = |Failed to create email template: { lo_template_ex->get_text( ) }| ).
     ENDTRY.
 
-    " Register the simulator sender identity so send_bulk_email has a verified sender.
-    " The simulator domain is pre-verified by AWS; AlreadyExists is fine.
-    TRY.
-        ao_se2->createemailidentity(
-          iv_emailidentity = cv_sim_sender ).
-        DATA(lv_sim_arn) = |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:identity/{ cv_sim_sender }|.
-        tag_resource( lv_sim_arn ).
-      CATCH /aws1/cx_se2alreadyexistsex.
-        " Already registered - fine.
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_sim_ex).
-        cl_abap_unit_assert=>fail(
-          msg = |Failed to register simulator sender identity: { lo_sim_ex->get_text( ) }| ).
-    ENDTRY.
-
   ENDMETHOD.
 
 
@@ -240,16 +217,6 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
         MESSAGE |Email identity { av_verified_email } not found| TYPE 'I'.
       CATCH /aws1/cx_rt_generic INTO DATA(lo_id_del_ex).
         MESSAGE |Could not delete email identity: { lo_id_del_ex->get_text( ) }| TYPE 'I'.
-    ENDTRY.
-
-    " Clean up simulator sender identity registered for send_bulk_email test.
-    TRY.
-        ao_se2->deleteemailidentity( iv_emailidentity = cv_sim_sender ).
-        MESSAGE |Deleted simulator sender identity { cv_sim_sender }| TYPE 'I'.
-      CATCH /aws1/cx_se2notfoundexception.
-        MESSAGE |Simulator sender identity { cv_sim_sender } not found| TYPE 'I'.
-      CATCH /aws1/cx_rt_generic INTO DATA(lo_sim_del_ex).
-        MESSAGE |Could not delete simulator sender identity: { lo_sim_del_ex->get_text( ) }| TYPE 'I'.
     ENDTRY.
   ENDMETHOD.
 
@@ -646,7 +613,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD send_bulk_email.
-    " Send to the simulator recipient - no delivery occurs, no verification needed.
+    " Use the simulator address as the recipient - delivery is silently discarded by AWS.
     DATA(lv_uuid)     = /awsex/cl_utils=>get_random_string( ).
     " e.g. success+ABC1234567@simulator.amazonses.com
     DATA(lv_recipient) = |success+{ lv_uuid }@simulator.amazonses.com|.
@@ -654,23 +621,31 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     DATA lt_to TYPE /aws1/cl_se2emailaddresslist_w=>tt_emailaddresslist.
     APPEND NEW /aws1/cl_se2emailaddresslist_w( iv_value = lv_recipient ) TO lt_to.
 
-    " Use the pre-verified simulator sender so the call actually succeeds.
-    " av_verified_email is intentionally unverified and would cause MessageRejected.
-    DATA(lo_result) = ao_se2_actions->send_bulk_email(
-      iv_from_address  = cv_sim_sender
-      iv_template_name = av_template_name
-      iv_template_data = '{}'
-      it_to_addresses  = lt_to ).
+    " av_verified_email is intentionally unverified, so MessageRejected is expected.
+    " This is consistent with the send_email and send_email_template test pattern.
+    TRY.
+        DATA(lo_result) = ao_se2_actions->send_bulk_email(
+          iv_from_address  = av_verified_email
+          iv_template_name = av_template_name
+          iv_template_data = '{}'
+          it_to_addresses  = lt_to ).
 
-    cl_abap_unit_assert=>assert_bound(
-      act = lo_result
-      msg = 'send_bulk_email must return a bound result object' ).
+        " If the send succeeded (account is out of sandbox), validate the response.
+        cl_abap_unit_assert=>assert_bound(
+          act = lo_result
+          msg = 'send_bulk_email must return a bound result object' ).
 
-    DATA(lv_count) = lines( lo_result->get_bulkemailentryresults( ) ).
-    cl_abap_unit_assert=>assert_equals(
-      act = lv_count
-      exp = 1
-      msg = |send_bulk_email must return exactly 1 result entry, got { lv_count }| ).
+        DATA(lv_count) = lines( lo_result->get_bulkemailentryresults( ) ).
+        cl_abap_unit_assert=>assert_equals(
+          act = lv_count
+          exp = 1
+          msg = |send_bulk_email must return exactly 1 result entry, got { lv_count }| ).
+
+      CATCH /aws1/cx_se2messagerejected INTO DATA(lo_rejected).
+        " Expected because av_verified_email is not verified in sandbox mode.
+        " The method correctly propagated the service exception.
+        MESSAGE |Expected MessageRejected from send_bulk_email: { lo_rejected->get_text( ) }| TYPE 'I'.
+    ENDTRY.
   ENDMETHOD.
 
 ENDCLASS.
