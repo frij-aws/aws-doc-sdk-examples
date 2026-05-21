@@ -19,23 +19,31 @@ CLASS /awsex/cl_s3c_actions DEFINITION
 
     METHODS update_job_priority
       IMPORTING
-        iv_account_id  TYPE /aws1/s3caccountid
-        iv_job_id      TYPE /aws1/s3cjobid.
+        iv_account_id    TYPE /aws1/s3caccountid
+        iv_job_id        TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobpriorityrslt.
 
     METHODS update_job_status
       IMPORTING
-        iv_account_id  TYPE /aws1/s3caccountid
-        iv_job_id      TYPE /aws1/s3cjobid.
+        iv_account_id    TYPE /aws1/s3caccountid
+        iv_job_id        TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobstatusrslt.
 
     METHODS describe_job
       IMPORTING
-        iv_account_id  TYPE /aws1/s3caccountid
-        iv_job_id      TYPE /aws1/s3cjobid.
+        iv_account_id    TYPE /aws1/s3caccountid
+        iv_job_id        TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cdescribejobresult.
 
     METHODS get_job_tagging
       IMPORTING
-        iv_account_id  TYPE /aws1/s3caccountid
-        iv_job_id      TYPE /aws1/s3cjobid.
+        iv_account_id    TYPE /aws1/s3caccountid
+        iv_job_id        TYPE /aws1/s3cjobid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cgetjobtagresult.
 
     METHODS put_job_tagging
       IMPORTING
@@ -44,7 +52,9 @@ CLASS /awsex/cl_s3c_actions DEFINITION
 
     METHODS list_jobs
       IMPORTING
-        iv_account_id  TYPE /aws1/s3caccountid.
+        iv_account_id    TYPE /aws1/s3caccountid
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3clistjobsresult.
 
     METHODS delete_job_tagging
       IMPORTING
@@ -127,7 +137,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.update_job_priority]
     TRY.
-        DATA(oo_result) = lo_s3c->updatejobpriority(
+        oo_result = lo_s3c->updatejobpriority(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id
           iv_priority  = 60
@@ -151,7 +161,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.update_job_status]
     TRY.
-        DATA(oo_result) = lo_s3c->updatejobstatus(
+        oo_result = lo_s3c->updatejobstatus(
           iv_accountid           = iv_account_id
           iv_jobid               = iv_job_id
           iv_requestedjobstatus  = 'Cancelled'
@@ -178,7 +188,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.describe_job]
     TRY.
-        DATA(oo_result) = lo_s3c->describejob(
+        oo_result = lo_s3c->describejob(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id
         ).
@@ -216,7 +226,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
     " snippet-start:[s3c.abapv1.get_job_tagging]
     TRY.
-        DATA(oo_result) = lo_s3c->getjobtagging(
+        oo_result = lo_s3c->getjobtagging(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id
         ).
@@ -288,7 +298,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
         APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )      TO lt_statuses.
         APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' )  TO lt_statuses.
 
-        DATA(oo_result) = lo_s3c->listjobs(
+        oo_result = lo_s3c->listjobs(
           iv_accountid   = iv_account_id
           it_jobstatuses = lt_statuses
         ).

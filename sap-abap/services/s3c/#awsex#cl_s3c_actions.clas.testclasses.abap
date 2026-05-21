@@ -390,18 +390,21 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
   METHOD update_job_priority.
     " Tests the update_job_priority action method.
     " Uses av_prio_job_id which is in Suspended state (safe to update).
-    ao_s3c_actions->update_job_priority(
+    DATA(oo_result) = ao_s3c_actions->update_job_priority(
       iv_account_id = av_account_id
       iv_job_id     = av_prio_job_id ).
 
-    " Verify the priority was actually changed to 60
-    DATA(lo_desc) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_prio_job_id ).
+    cl_abap_unit_assert=>assert_bound(
+      act = oo_result
+      msg = 'update_job_priority must return a bound result object' ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_prio_job_id
+      act = oo_result->get_jobid( )
+      msg = 'Returned job ID must match the requested job ID' ).
     cl_abap_unit_assert=>assert_equals(
       exp = 60
-      act = lo_desc->get_job( )->get_priority( )
-      msg = |Job { av_prio_job_id } priority must be 60 after update_job_priority| ).
+      act = oo_result->get_priority( )
+      msg = |Job { av_prio_job_id } priority must be 60 in the returned result| ).
   ENDMETHOD.
 
 
@@ -413,17 +416,25 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     DATA(lo_pre) = ao_s3c->describejob(
       iv_accountid = av_account_id
       iv_jobid     = av_cancel_job_id ).
-    DATA(lv_pre_status) = lo_pre->get_job( )->get_status( ).
     cl_abap_unit_assert=>assert_equals(
       exp = 'Suspended'
-      act = lv_pre_status
+      act = lo_pre->get_job( )->get_status( )
       msg = |Job { av_cancel_job_id } must be Suspended before cancel test| ).
 
-    ao_s3c_actions->update_job_status(
+    DATA(oo_result) = ao_s3c_actions->update_job_status(
       iv_account_id = av_account_id
       iv_job_id     = av_cancel_job_id ).
 
-    " Poll until the job reaches Cancelled (max ~60 s)
+    cl_abap_unit_assert=>assert_bound(
+      act = oo_result
+      msg = 'update_job_status must return a bound result object' ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_cancel_job_id
+      act = oo_result->get_jobid( )
+      msg = 'Returned job ID must match the requested job ID' ).
+
+    " The API returns the transition-initiating status immediately.
+    " Poll until the job reaches Cancelled to confirm the state propagated (max ~60 s).
     DATA lv_cancelled TYPE abap_bool VALUE abap_false.
     DO 12 TIMES.
       DATA(lo_poll) = ao_s3c->describejob(
@@ -443,23 +454,22 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
   METHOD describe_job.
     " Tests the describe_job action method.
-    ao_s3c_actions->describe_job(
+    DATA(oo_result) = ao_s3c_actions->describe_job(
       iv_account_id = av_account_id
       iv_job_id     = av_ro_job_id ).
 
-    " Independently verify the job is reachable and carries the correct ID
-    DATA(lo_result) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_ro_job_id ).
     cl_abap_unit_assert=>assert_bound(
-      act = lo_result->get_job( )
+      act = oo_result
+      msg = 'describe_job must return a bound result object' ).
+    cl_abap_unit_assert=>assert_bound(
+      act = oo_result->get_job( )
       msg = |describe_job: job descriptor for { av_ro_job_id } must be bound| ).
     cl_abap_unit_assert=>assert_equals(
       exp = av_ro_job_id
-      act = lo_result->get_job( )->get_jobid( )
+      act = oo_result->get_job( )->get_jobid( )
       msg = 'Described job ID must match av_ro_job_id' ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_result->get_job( )->get_status( )
+      act = oo_result->get_job( )->get_status( )
       msg = 'Described job status must not be empty' ).
   ENDMETHOD.
 
@@ -467,16 +477,15 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
   METHOD get_job_tagging.
     " Tests the get_job_tagging action method.
     " av_get_tag_job_id was pre-tagged in class_setup with SetupKey=SetupValue.
-    ao_s3c_actions->get_job_tagging(
+    DATA(oo_result) = ao_s3c_actions->get_job_tagging(
       iv_account_id = av_account_id
       iv_job_id     = av_get_tag_job_id ).
 
-    " Independently verify the tag is still present
-    DATA(lo_result) = ao_s3c->getjobtagging(
-      iv_accountid = av_account_id
-      iv_jobid     = av_get_tag_job_id ).
-    DATA(lt_tags) = lo_result->get_tags( ).
+    cl_abap_unit_assert=>assert_bound(
+      act = oo_result
+      msg = 'get_job_tagging must return a bound result object' ).
 
+    DATA(lt_tags) = oo_result->get_tags( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = lt_tags
       msg = |get_job_tagging: job { av_get_tag_job_id } must have at least one tag| ).
@@ -490,7 +499,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     ENDLOOP.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = 'Tag SetupKey must be present on the get-tagging test job' ).
+      msg = 'Tag SetupKey must be present in the returned tag list' ).
   ENDMETHOD.
 
 
@@ -539,30 +548,20 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
   METHOD list_jobs.
     " Tests the list_jobs action method.
-    ao_s3c_actions->list_jobs( iv_account_id = av_account_id ).
-
-    " Independently verify via the SDK that at least av_ro_job_id is listed
-    DATA lt_statuses TYPE /aws1/cl_s3cjobstatuslist_w=>tt_jobstatuslist.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'New' )       TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Preparing' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )     TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Active' )    TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Complete' )  TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Cancelled' ) TO lt_statuses.
-    APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Failed' )    TO lt_statuses.
-
-    DATA(lo_result) = ao_s3c->listjobs(
-      iv_accountid   = av_account_id
-      it_jobstatuses = lt_statuses ).
+    DATA(oo_result) = ao_s3c_actions->list_jobs( iv_account_id = av_account_id ).
 
     cl_abap_unit_assert=>assert_bound(
-      act = lo_result
-      msg = 'list_jobs: result must be bound' ).
+      act = oo_result
+      msg = 'list_jobs must return a bound result object' ).
 
-    " The read-only test job created in setup must appear in the list
+    DATA(lt_jobs) = oo_result->get_jobs( ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lt_jobs
+      msg = 'list_jobs must return at least one job' ).
+
+    " The read-only test job created in setup must appear in the returned list
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_result->get_jobs( ) INTO DATA(lo_job).
+    LOOP AT lt_jobs INTO DATA(lo_job).
       IF lo_job->get_jobid( ) = av_ro_job_id.
         lv_found = abap_true.
         EXIT.
@@ -570,7 +569,7 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
     ENDLOOP.
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |list_jobs: job { av_ro_job_id } must appear in the listing| ).
+      msg = |list_jobs: job { av_ro_job_id } must appear in the returned job list| ).
   ENDMETHOD.
 
 
