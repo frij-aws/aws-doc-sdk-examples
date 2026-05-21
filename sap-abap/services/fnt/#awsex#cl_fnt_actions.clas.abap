@@ -18,6 +18,8 @@ CLASS /awsex/cl_fnt_actions DEFINITION
       IMPORTING
         !iv_distribution_id TYPE /aws1/fntstring
         !iv_new_comment     TYPE /aws1/fntstring
+      RETURNING
+        VALUE(oo_result)    TYPE REF TO /aws1/cl_fntupdistributionrs
       RAISING
         /aws1/cx_rt_generic .
 
@@ -92,6 +94,7 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
           iv_id                 = iv_distribution_id
           iv_ifmatch            = lv_etag
         ).
+        oo_result = lo_update_result.
         MESSAGE |Distribution { iv_distribution_id } updated: comment is now '{ iv_new_comment }'| TYPE 'I'.
       CATCH /aws1/cx_fntnosuchdistribution INTO DATA(lo_ex).
         MESSAGE lo_ex->if_message~get_text( ) TYPE 'I'.

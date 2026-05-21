@@ -397,17 +397,30 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   METHOD update_distribution.
     DATA(lv_new_comment) = |convert_test updated { sy-datum } { sy-uzeit }|.
 
-    " Call the action under test.
-    ao_fnt_actions->update_distribution(
+    " Call the action under test — it now returns the UpdateDistribution response.
+    DATA(lo_result) = ao_fnt_actions->update_distribution(
       iv_distribution_id = av_dist_id
       iv_new_comment     = lv_new_comment ).
 
-    " Read the config back directly via the SDK to verify the change.
-    DATA(lo_cfg_check) = ao_fnt->getdistributionconfig( iv_id = av_dist_id ).
+    " Result object must be bound.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_distribution: result object must be bound' ).
 
-    DATA(lv_actual) = lo_cfg_check
-                        ->get_distributionconfig( )
-                        ->get_comment( ).
+    " The returned distribution must carry the correct ID.
+    DATA(lo_dist) = lo_result->get_distribution( ).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_dist
+      msg = 'update_distribution: distribution object in result must be bound' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_dist_id
+      act = lo_dist->get_id( )
+      msg = |update_distribution: returned distribution ID should be { av_dist_id }| ).
+
+    " Confirm the comment was persisted by reading the config back independently.
+    DATA(lo_cfg_check) = ao_fnt->getdistributionconfig( iv_id = av_dist_id ).
+    DATA(lv_actual) = lo_cfg_check->get_distributionconfig( )->get_comment( ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = lv_new_comment
