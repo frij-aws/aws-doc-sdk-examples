@@ -410,16 +410,9 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
 
   METHOD update_job_status.
     " Tests the update_job_status action method (cancels a job).
-    " Uses av_cancel_job_id which is in Suspended state.
-
-    " Precondition: job must be in Suspended state
-    DATA(lo_pre) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_cancel_job_id ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = 'Suspended'
-      act = lo_pre->get_job( )->get_status( )
-      msg = |Job { av_cancel_job_id } must be Suspended before cancel test| ).
+    " Uses av_cancel_job_id. Jobs with ConfirmationRequired=TRUE transition
+    " through New → Preparing → Suspended. Any of those states is cancellable,
+    " so we do NOT assert a specific entry state — we only assert the end result.
 
     DATA(oo_result) = ao_s3c_actions->update_job_status(
       iv_account_id = av_account_id
@@ -433,7 +426,6 @@ CLASS ltc_s3c_actions IMPLEMENTATION.
       act = oo_result->get_jobid( )
       msg = 'Returned job ID must match the requested job ID' ).
 
-    " The API returns the transition-initiating status immediately.
     " Poll until the job reaches Cancelled to confirm the state propagated (max ~60 s).
     DATA lv_cancelled TYPE abap_bool VALUE abap_false.
     DO 12 TIMES.
