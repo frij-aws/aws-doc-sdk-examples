@@ -23,7 +23,6 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
 
     " ── Shared read-only resources (created once, used by many tests) ──────
     CLASS-DATA av_thing_name     TYPE /aws1/iotthingname.
-    CLASS-DATA av_thing_arn      TYPE /aws1/iotthingarn.
     CLASS-DATA av_cert_id        TYPE /aws1/iotcertificateid.
     CLASS-DATA av_cert_arn       TYPE /aws1/iotcertificatearn.
     CLASS-DATA av_rule_name      TYPE /aws1/iotrulename.
@@ -133,8 +132,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_thing
       msg = 'IoT thing creation failed in class_setup' ).
-    av_thing_arn = lo_thing->get_thingarn( ).
-    tag_iot_resource( av_thing_arn ).
 
     " ────────────────────────────────────────────────────────────────────────
     " 4. Create shared certificate and attach to shared thing
@@ -188,7 +185,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_del_thing
       msg = 'Dedicated delete-thing creation failed in class_setup' ).
-    tag_iot_resource( lo_del_thing->get_thingarn( ) ).
 
     " ────────────────────────────────────────────────────────────────────────
     " 8. Dedicated certificate for delete_certificate test
@@ -376,9 +372,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = oo_result->get_thingarn( )
       msg = |Thing ARN is empty after create_thing| ).
 
-    " Tag the newly created thing
-    tag_iot_resource( oo_result->get_thingarn( ) ).
-
     " Cleanup
     TRY.
         ao_iot->deletething( iv_thingname = lv_new_name ).
@@ -445,7 +438,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_new_thing
       msg = |Thing creation failed in attach_thing_principal| ).
-    tag_iot_resource( lo_new_thing->get_thingarn( ) ).
 
     DATA(lo_new_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound(
@@ -531,7 +523,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_new_thing
       msg = |Thing creation failed in detach_thing_principal| ).
-    tag_iot_resource( lo_new_thing->get_thingarn( ) ).
 
     DATA(lo_new_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
     cl_abap_unit_assert=>assert_bound(
