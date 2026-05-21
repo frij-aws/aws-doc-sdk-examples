@@ -577,8 +577,24 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     DATA(lv_test_uuid) = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_test_identity) = |test{ lv_test_uuid }@example.com|.
 
-    " Create the identity
-    ao_se2->createemailidentity( iv_emailidentity = lv_test_identity ).
+    " Create the identity, retrying on TooManyRequestsException with backoff.
+    DATA lv_created TYPE abap_bool VALUE abap_false.
+    DO 5 TIMES.
+      TRY.
+          ao_se2->createemailidentity( iv_emailidentity = lv_test_identity ).
+          lv_created = abap_true.
+          EXIT.
+        CATCH /aws1/cx_se2toomanyrequestsex.
+          WAIT UP TO 2 SECONDS.
+        CATCH /aws1/cx_se2alreadyexistsex.
+          lv_created = abap_true.
+          EXIT.
+      ENDTRY.
+    ENDDO.
+    IF lv_created = abap_false.
+      cl_abap_unit_assert=>fail(
+        msg = |delete_email_identity: could not create { lv_test_identity } after retries| ).
+    ENDIF.
 
     " Tag it for cleanup in case test fails
     DATA(lv_arn) = |arn:aws:ses:{ ao_session->get_region( ) }:{ ao_session->get_account_id( ) }:identity/{ lv_test_identity }|.
