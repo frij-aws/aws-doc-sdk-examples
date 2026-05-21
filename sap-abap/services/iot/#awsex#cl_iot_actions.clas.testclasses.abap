@@ -108,10 +108,10 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
   METHOD safe_rule_name.
     " IoT rule names: letters, numbers, underscores only, max 128 chars.
-    " We keep prefix + first 16 chars of the random string (already hex-like).
+    " GENERAL_GET_RANDOM_STRING returns 10 characters; use the full string.
     DATA(lv_raw) = iv_rand.
-    TRANSLATE lv_raw USING '- _'.   " replace hyphens with underscores
-    rv_name = |{ iv_prefix }{ lv_raw(16) }|.
+    TRANSLATE lv_raw USING '- _'.   " replace any hyphens with underscores
+    rv_name = |{ iv_prefix }{ lv_raw }|.
   ENDMETHOD.
 
 
