@@ -37,14 +37,14 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.list_distributions]
+    " snippet-start:[fnt.abapv1.listdistributions]
     TRY.
         oo_result = lo_fnt->listdistributions( ). " oo_result is returned for testing purposes. "
         MESSAGE 'Retrieved list of CloudFront distributions.' TYPE 'I'.
       CATCH /aws1/cx_fntinvalidargument.
         MESSAGE 'Invalid argument provided.' TYPE 'E'.
     ENDTRY.
-    " snippet-end:[fnt.abapv1.list_distributions]
+    " snippet-end:[fnt.abapv1.listdistributions]
 
   ENDMETHOD.
 
@@ -56,7 +56,7 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_fnt) = /aws1/cl_fnt_factory=>create( lo_session ).
 
-    " snippet-start:[fnt.abapv1.update_distribution]
+    " snippet-start:[fnt.abapv1.updatedistribution]
     TRY.
         " Get the current distribution configuration and ETag "
         DATA(lo_distribution_config_result) = lo_fnt->getdistributionconfig( iv_id = iv_distribution_id ).
@@ -97,7 +97,7 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
       CATCH /aws1/cx_fntinvalidifmatchvrs.
         MESSAGE 'Invalid If-Match version.' TYPE 'E'.
     ENDTRY.
-    " snippet-end:[fnt.abapv1.update_distribution]
+    " snippet-end:[fnt.abapv1.updatedistribution]
 
   ENDMETHOD.
 ENDCLASS.
