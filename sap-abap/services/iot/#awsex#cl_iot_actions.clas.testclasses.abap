@@ -658,25 +658,44 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     " Block until AWS_Things index is ACTIVE (fails the test if it times out)
     wait_for_index_active( iv_max_wait_sec = 120 ).
 
-    " Wait an additional moment for the shared thing to be indexed
-    WAIT UP TO 15 SECONDS.
+    " The index being ACTIVE does not mean the specific thing has been indexed
+    " yet — things created before indexing was enabled can take several minutes
+    " to propagate into the index. Poll the actual query until the thing appears.
+    DATA lv_found   TYPE abap_bool VALUE abap_false.
+    DATA lv_elapsed TYPE i VALUE 0.
+    DATA lv_start   TYPE timestampl.
+    DATA lv_now     TYPE timestampl.
+    DATA lt_things  TYPE /aws1/cl_iotthingdocument=>tt_thingdocumentlist.
+    CONSTANTS lc_timeout TYPE i VALUE 300.
 
-    " ── Call the action under test ──────────────────────────────────────────
-    DATA(lt_things) = ao_iot_actions->search_index(
-      iv_query = |thingName:{ av_thing_name }| ).
+    GET TIME STAMP FIELD lv_start.
 
-    " ── The shared thing MUST appear in the results ─────────────────────────
-    DATA(lv_found) = abap_false.
-    LOOP AT lt_things INTO DATA(lo_thing).
-      IF lo_thing->get_thingname( ) = av_thing_name.
-        lv_found = abap_true.
-        EXIT.
+    WHILE lv_found = abap_false AND lv_elapsed < lc_timeout.
+      TRY.
+          lt_things = ao_iot_actions->search_index(
+            iv_query = |thingName:{ av_thing_name }| ).
+
+          LOOP AT lt_things INTO DATA(lo_thing).
+            IF lo_thing->get_thingname( ) = av_thing_name.
+              lv_found = abap_true.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+        CATCH /aws1/cx_rt_generic.
+          " Index may still be initialising — continue polling
+      ENDTRY.
+
+      IF lv_found = abap_false.
+        WAIT UP TO 15 SECONDS.
+        GET TIME STAMP FIELD lv_now.
+        lv_elapsed = lv_now - lv_start.
       ENDIF.
-    ENDLOOP.
+    ENDWHILE.
 
+    " ── Assert the thing was found ───────────────────────────────────────────
     cl_abap_unit_assert=>assert_true(
       act = lv_found
-      msg = |Thing { av_thing_name } not found in search_index results| ).
+      msg = |Thing { av_thing_name } not found in search_index results after { lc_timeout }s| ).
   ENDMETHOD.
 
 
