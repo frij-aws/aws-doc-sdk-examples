@@ -23,7 +23,7 @@ CLASS /awsex/cl_iot_actions DEFINITION
     " @raising /aws1/cx_rt_generic | Thrown when the operation fails
     METHODS list_things
       RETURNING
-        VALUE(ot_things) TYPE /aws1/cl_iotthingattribute=>tt_thingattrlist
+        VALUE(ot_things) TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist
       RAISING
         /aws1/cx_rt_generic.
 
