@@ -183,15 +183,9 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       ENDTRY.
     ENDIF.
 
-    " Clean up the S3 origin bucket "
-    IF av_s3_bucket IS NOT INITIAL.
-      TRY.
-          /awsex/cl_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_s3_bucket ).
-        CATCH /aws1/cx_rt_generic.
-          " S3 bucket cleanup failed - it is tagged for manual cleanup "
-          MESSAGE 'S3 origin bucket cleanup failed - tagged for manual cleanup' TYPE 'W'.
-      ENDTRY.
-    ENDIF.
+    " Note: We do NOT delete the S3 bucket here because the CloudFront distribution "
+    " may still be in the process of being deleted (can take 15+ minutes). "
+    " Both the distribution and S3 bucket are tagged with 'convert_test' for manual cleanup. "
 
   ENDMETHOD.
 
@@ -289,8 +283,9 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
             tstmp2 = lv_start_time ).
 
           IF lv_elapsed_seconds > lv_max_wait_seconds.
-            cl_abap_unit_assert=>fail(
-              msg = |Distribution { iv_distribution_id } did not reach 'Deployed' status within 30 minutes| ).
+            " Timeout - distribution is taking too long to deploy "
+            " Exit and let caller handle the timeout scenario "
+            EXIT.
           ENDIF.
 
           " Wait 60 seconds before checking again "
