@@ -47,7 +47,7 @@ CLASS /awsex/cl_s3c_actions DEFINITION
         !iv_account_id TYPE /aws1/s3caccountid
         !iv_job_id     TYPE /aws1/s3cjobid
       RETURNING
-        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cgetjobtaggingresult
+        VALUE(oo_result) TYPE REF TO /aws1/cl_s3cgetjobtagresult
       RAISING
         /aws1/cx_rt_generic.
 
