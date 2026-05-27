@@ -9,8 +9,8 @@ CLASS /awsex/cl_fnt_actions DEFINITION
   PUBLIC SECTION.
 
     METHODS list_distributions
-      EXPORTING
-        !oo_result TYPE REF TO /aws1/cl_fntlstdistributionsrs
+      RETURNING
+        VALUE(oo_result) TYPE REF TO /aws1/cl_fntlstdistributionsrs
       RAISING
         /aws1/cx_rt_generic.
 
@@ -27,7 +27,7 @@ ENDCLASS.
 
 
 
-CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
+CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
 
 
   METHOD list_distributions.
@@ -39,10 +39,11 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
 
     " snippet-start:[fnt.abapv1.list_distributions]
     TRY.
-        oo_result = lo_fnt->listdistributions( ). " oo_result is returned for testing purposes. "
-        MESSAGE 'Retrieved list of CloudFront distributions.' TYPE 'I'.
-      CATCH /aws1/cx_fntinvalidargument.
-        MESSAGE 'Invalid argument provided.' TYPE 'E'.
+        oo_result = lo_fnt->listdistributions( ).
+        DATA(lo_distribution_list) = oo_result->get_distributionlist( ).
+        MESSAGE |Retrieved { lo_distribution_list->get_quantity( ) } CloudFront distributions| TYPE 'I'.
+      CATCH /aws1/cx_fntinvalidargument INTO DATA(lo_ex).
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[fnt.abapv1.list_distributions]
 
@@ -58,44 +59,42 @@ CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
 
     " snippet-start:[fnt.abapv1.update_distribution]
     TRY.
-        " Get the current distribution configuration and ETag "
-        DATA(lo_distribution_config_result) = lo_fnt->getdistributionconfig( iv_id = iv_distribution_id ).
-        DATA(lo_old_config) = lo_distribution_config_result->get_distributionconfig( ).
-        DATA(lv_etag) = lo_distribution_config_result->get_etag( ).
+        " Get the current distribution configuration and ETag.
+        DATA(lo_config_result) = lo_fnt->getdistributionconfig( iv_id = iv_distribution_id ).
+        DATA(lo_old_config) = lo_config_result->get_distributionconfig( ).
+        DATA(lv_etag) = lo_config_result->get_etag( ).
 
-        " Create a new distribution config with the updated comment "
-        " Since the config object is immutable, we need to create a new one with all existing values "
+        " Build a new distribution config carrying all existing values but a new comment.
         DATA(lo_new_config) = NEW /aws1/cl_fntdistributionconfig(
-          iv_callerreference = lo_old_config->get_callerreference( )
-          io_aliases = lo_old_config->get_aliases( )
-          iv_defaultrootobject = lo_old_config->get_defaultrootobject( )
-          io_origins = lo_old_config->get_origins( )
-          io_origingroups = lo_old_config->get_origingroups( )
+          iv_callerreference    = lo_old_config->get_callerreference( )
+          io_aliases            = lo_old_config->get_aliases( )
+          iv_defaultrootobject  = lo_old_config->get_defaultrootobject( )
+          io_origins            = lo_old_config->get_origins( )
+          io_origingroups       = lo_old_config->get_origingroups( )
           io_defaultcachebehavior = lo_old_config->get_defaultcachebehavior( )
-          io_cachebehaviors = lo_old_config->get_cachebehaviors( )
+          io_cachebehaviors     = lo_old_config->get_cachebehaviors( )
           io_customerrorresponses = lo_old_config->get_customerrorresponses( )
-          iv_comment = iv_comment
-          io_logging = lo_old_config->get_logging( )
-          iv_priceclass = lo_old_config->get_priceclass( )
-          iv_enabled = lo_old_config->get_enabled( )
-          io_viewercertificate = lo_old_config->get_viewercertificate( )
-          io_restrictions = lo_old_config->get_restrictions( )
-          iv_webaclid = lo_old_config->get_webaclid( )
-          iv_httpversion = lo_old_config->get_httpversion( )
-          iv_isipv6enabled = lo_old_config->get_isipv6enabled( ) ).
+          iv_comment            = iv_comment
+          io_logging            = lo_old_config->get_logging( )
+          iv_priceclass         = lo_old_config->get_priceclass( )
+          iv_enabled            = lo_old_config->get_enabled( )
+          io_viewercertificate  = lo_old_config->get_viewercertificate( )
+          io_restrictions       = lo_old_config->get_restrictions( )
+          iv_webaclid           = lo_old_config->get_webaclid( )
+          iv_httpversion        = lo_old_config->get_httpversion( )
+          iv_isipv6enabled      = lo_old_config->get_isipv6enabled( ) ).
 
-        " Update the distribution with the modified configuration "
         lo_fnt->updatedistribution(
           io_distributionconfig = lo_new_config
-          iv_id = iv_distribution_id
-          iv_ifmatch = lv_etag ).
-        MESSAGE 'CloudFront distribution updated successfully.' TYPE 'I'.
-      CATCH /aws1/cx_fntnosuchdistribution.
-        MESSAGE 'Distribution does not exist.' TYPE 'E'.
-      CATCH /aws1/cx_fntpreconditionfailed.
-        MESSAGE 'Precondition failed - ETag mismatch.' TYPE 'E'.
-      CATCH /aws1/cx_fntinvalidifmatchvrs.
-        MESSAGE 'Invalid If-Match version.' TYPE 'E'.
+          iv_id                 = iv_distribution_id
+          iv_ifmatch            = lv_etag ).
+        MESSAGE |CloudFront distribution updated: { iv_distribution_id }| TYPE 'I'.
+      CATCH /aws1/cx_fntnosuchdistribution INTO DATA(lo_ex_nodist).
+        MESSAGE lo_ex_nodist->get_text( ) TYPE 'I'.
+      CATCH /aws1/cx_fntpreconditionfailed INTO DATA(lo_ex_precond).
+        MESSAGE lo_ex_precond->get_text( ) TYPE 'I'.
+      CATCH /aws1/cx_fntinvalidifmatchvrs INTO DATA(lo_ex_ifmatch).
+        MESSAGE lo_ex_ifmatch->get_text( ) TYPE 'I'.
     ENDTRY.
     " snippet-end:[fnt.abapv1.update_distribution]
 
