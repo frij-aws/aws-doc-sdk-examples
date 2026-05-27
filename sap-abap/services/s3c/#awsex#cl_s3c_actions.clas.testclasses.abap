@@ -486,19 +486,23 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
       act = av_job_id_priority
       msg = 'Pre-created job for update_job_priority must exist' ).
 
-    ao_s3c_actions->update_job_priority(
+    DATA(lo_result) = ao_s3c_actions->update_job_priority(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_priority
       iv_priority   = 60 ).
 
-    " Verify by describing the job and checking the priority field
-    DATA(lo_desc) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_priority ).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_job_priority must return a bound result' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_job_id_priority
+      act = lo_result->get_jobid( )
+      msg = 'Returned Job ID must match the input Job ID' ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = 60
-      act = lo_desc->get_job( )->get_priority( )
+      act = lo_result->get_priority( )
       msg = 'Job priority must be 60 after update_job_priority' ).
   ENDMETHOD.
 
@@ -511,29 +515,27 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
       act = av_job_id_cancel
       msg = 'Pre-created job for update_job_status must exist' ).
 
-    ao_s3c_actions->update_job_status(
+    DATA(lo_result) = ao_s3c_actions->update_job_status(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_cancel
       iv_req_status = 'Cancelled' ).
 
-    " Poll until the cancellation is reflected
-    DATA lv_status TYPE /aws1/s3cjobstatus.
-    DO 20 TIMES.
-      DATA(lo_desc) = ao_s3c->describejob(
-        iv_accountid = av_account_id
-        iv_jobid     = av_job_id_cancel ).
-      lv_status = lo_desc->get_job( )->get_status( ).
-      IF lv_status = 'Cancelled' OR lv_status = 'Cancelling'.
-        EXIT.
-      ENDIF.
-      WAIT UP TO 3 SECONDS.
-    ENDDO.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'update_job_status must return a bound result' ).
 
+    cl_abap_unit_assert=>assert_equals(
+      exp = av_job_id_cancel
+      act = lo_result->get_jobid( )
+      msg = 'Returned Job ID must match the input Job ID' ).
+
+    " The API returns the new status immediately in the response
+    DATA(lv_status) = lo_result->get_status( ).
     cl_abap_unit_assert=>assert_true(
       act = COND abap_bool(
         WHEN lv_status = 'Cancelled' OR lv_status = 'Cancelling'
         THEN abap_true ELSE abap_false )
-      msg = |Job must be Cancelled/Cancelling; actual status: { lv_status }| ).
+      msg = |Job must be Cancelled/Cancelling in response; actual: { lv_status }| ).
 
     " Prevent teardown from trying to cancel an already-cancelled job
     CLEAR av_job_id_cancel.
@@ -542,22 +544,20 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
 
   METHOD describe_job.
     " ----------------------------------------------------------------
-    " describe_job prints job details.  We verify it does not raise
-    " and that the job ARN / status is populated.
+    " describe_job returns the full job descriptor.  We verify the
+    " returned result object contains the expected Job ID and ARN.
     " ----------------------------------------------------------------
     cl_abap_unit_assert=>assert_not_initial(
       act = av_job_id_describe
       msg = 'Pre-created job for describe_job must exist' ).
 
-    " Call the action method under test (it messages output, does not return)
-    ao_s3c_actions->describe_job(
+    DATA(lo_result) = ao_s3c_actions->describe_job(
       iv_account_id = av_account_id
       iv_job_id     = av_job_id_describe ).
 
-    " Verify the job is accessible and has the expected ID via the SDK client
-    DATA(lo_result) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_id_describe ).
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'describe_job must return a bound result' ).
 
     cl_abap_unit_assert=>assert_equals(
       exp = av_job_id_describe
@@ -579,14 +579,9 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
       act = av_job_id_get_tag
       msg = 'Pre-created job for get_job_tagging must exist' ).
 
-    DATA lo_result TYPE REF TO /aws1/cl_s3cgetjobtagresult.
-
-    ao_s3c_actions->get_job_tagging(
-      EXPORTING
-        iv_account_id = av_account_id
-        iv_job_id     = av_job_id_get_tag
-      IMPORTING
-        oo_result     = lo_result ).
+    DATA(lo_result) = ao_s3c_actions->get_job_tagging(
+      iv_account_id = av_account_id
+      iv_job_id     = av_job_id_get_tag ).
 
     cl_abap_unit_assert=>assert_bound(
       act = lo_result
@@ -661,13 +656,7 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
       act = av_job_id_list
       msg = 'Pre-created job for list_jobs must exist' ).
 
-    DATA lo_result TYPE REF TO /aws1/cl_s3clistjobsresult.
-
-    ao_s3c_actions->list_jobs(
-      EXPORTING
-        iv_account_id = av_account_id
-      IMPORTING
-        oo_result     = lo_result ).
+    DATA(lo_result) = ao_s3c_actions->list_jobs( iv_account_id = av_account_id ).
 
     cl_abap_unit_assert=>assert_bound(
       act = lo_result

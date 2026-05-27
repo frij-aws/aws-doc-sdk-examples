@@ -22,6 +22,7 @@ CLASS /awsex/cl_s3c_actions DEFINITION
                 !iv_account_id TYPE /aws1/s3caccountid
                 !iv_job_id     TYPE /aws1/s3cjobid
                 !iv_priority   TYPE /aws1/s3cjobpriority
+      RETURNING VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobpriorityrslt
       RAISING   /aws1/cx_rt_generic.
 
     METHODS update_job_status
@@ -29,20 +30,21 @@ CLASS /awsex/cl_s3c_actions DEFINITION
                 !iv_account_id  TYPE /aws1/s3caccountid
                 !iv_job_id      TYPE /aws1/s3cjobid
                 !iv_req_status  TYPE /aws1/s3crequestedjobstatus
+      RETURNING VALUE(oo_result) TYPE REF TO /aws1/cl_s3cupdjobstatusrslt
       RAISING   /aws1/cx_rt_generic.
 
     METHODS describe_job
       IMPORTING
                 !iv_account_id TYPE /aws1/s3caccountid
                 !iv_job_id     TYPE /aws1/s3cjobid
+      RETURNING VALUE(oo_result) TYPE REF TO /aws1/cl_s3cdescribejobresult
       RAISING   /aws1/cx_rt_generic.
 
     METHODS get_job_tagging
       IMPORTING
                 !iv_account_id TYPE /aws1/s3caccountid
                 !iv_job_id     TYPE /aws1/s3cjobid
-      EXPORTING
-                !oo_result     TYPE REF TO /aws1/cl_s3cgetjobtagresult
+      RETURNING VALUE(oo_result) TYPE REF TO /aws1/cl_s3cgetjobtagresult
       RAISING   /aws1/cx_rt_generic.
 
     METHODS put_job_tagging
@@ -55,8 +57,7 @@ CLASS /awsex/cl_s3c_actions DEFINITION
     METHODS list_jobs
       IMPORTING
                 !iv_account_id TYPE /aws1/s3caccountid
-      EXPORTING
-                !oo_result     TYPE REF TO /aws1/cl_s3clistjobsresult
+      RETURNING VALUE(oo_result) TYPE REF TO /aws1/cl_s3clistjobsresult
       RAISING   /aws1/cx_rt_generic.
 
     METHODS delete_job_tagging
@@ -76,11 +77,11 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD create_job.
 
+    " snippet-start:[s3c.abapv1.create_job]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.create_job]
     TRY.
         " Build the S3PutObjectTagging operation
         DATA lt_tagset TYPE /aws1/cl_s3cs3tag=>tt_s3tagset.
@@ -152,19 +153,19 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD update_job_priority.
 
+    " snippet-start:[s3c.abapv1.update_job_priority]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.update_job_priority]
     TRY.
         " iv_priority example: 60
-        lo_s3c->updatejobpriority(
+        oo_result = lo_s3c->updatejobpriority(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id
           iv_priority  = iv_priority ).
 
-        MESSAGE |Job priority updated to { iv_priority } for job { iv_job_id }| TYPE 'I'.
+        MESSAGE |Job { oo_result->get_jobid( ) } priority updated to { oo_result->get_priority( ) }| TYPE 'I'.
 
       CATCH /aws1/cx_s3cbadrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
@@ -180,19 +181,19 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD update_job_status.
 
+    " snippet-start:[s3c.abapv1.update_job_status]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.update_job_status]
     TRY.
         " iv_req_status examples: 'Cancelled', 'Ready'
-        DATA(lo_result) = lo_s3c->updatejobstatus(
+        oo_result = lo_s3c->updatejobstatus(
           iv_accountid          = iv_account_id
           iv_jobid              = iv_job_id
           iv_requestedjobstatus = iv_req_status ).
 
-        MESSAGE |Job { lo_result->get_jobid( ) } status changed to { lo_result->get_status( ) }| TYPE 'I'.
+        MESSAGE |Job { oo_result->get_jobid( ) } status changed to { oo_result->get_status( ) }| TYPE 'I'.
 
       CATCH /aws1/cx_s3cbadrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
@@ -208,29 +209,30 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD describe_job.
 
+    " snippet-start:[s3c.abapv1.describe_job]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.describe_job]
     TRY.
-        DATA(lo_result) = lo_s3c->describejob(
+        oo_result = lo_s3c->describejob(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id ).
 
-        DATA(lo_job) = lo_result->get_job( ).
+        DATA(lo_job) = oo_result->get_job( ).
         IF lo_job IS NOT INITIAL.
           DATA(lv_status)   = lo_job->get_status( ).
           DATA(lv_priority) = lo_job->get_priority( ).
           DATA(lv_desc)     = lo_job->get_description( ).
-          DATA(lv_role)     = lo_job->get_rolearn( ).
           DATA(lo_progress) = lo_job->get_progresssummary( ).
 
           MESSAGE |Job ID: { lo_job->get_jobid( ) } Status: { lv_status }| TYPE 'I'.
           MESSAGE |Description: { lv_desc } Priority: { lv_priority }| TYPE 'I'.
 
           IF lo_progress IS NOT INITIAL.
-            MESSAGE |Progress: Total={ lo_progress->get_totalnumberoftasks( ) } Succeeded={ lo_progress->get_numberoftaskssucceeded( ) } Failed={ lo_progress->get_numberoftasksfailed( ) }| TYPE 'I'.
+            MESSAGE |Progress: Total={ lo_progress->get_totalnumberoftasks( ) }| &&
+                    | Succeeded={ lo_progress->get_numberoftaskssucceeded( ) }| &&
+                    | Failed={ lo_progress->get_numberoftasksfailed( ) }| TYPE 'I'.
           ENDIF.
         ENDIF.
 
@@ -246,13 +248,13 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD get_job_tagging.
 
+    " snippet-start:[s3c.abapv1.get_job_tagging]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.get_job_tagging]
     TRY.
-        oo_result = lo_s3c->getjobtagging(          " oo_result is returned for testing purposes. "
+        oo_result = lo_s3c->getjobtagging(
           iv_accountid = iv_account_id
           iv_jobid     = iv_job_id ).
 
@@ -275,11 +277,11 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD put_job_tagging.
 
+    " snippet-start:[s3c.abapv1.put_job_tagging]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.put_job_tagging]
     TRY.
         " it_tags example:
         "   VALUE /aws1/cl_s3cs3tag=>tt_s3tagset(
@@ -306,11 +308,11 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD list_jobs.
 
+    " snippet-start:[s3c.abapv1.list_jobs]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.list_jobs]
     TRY.
         DATA lt_statuses TYPE /aws1/cl_s3cjobstatuslist_w=>tt_jobstatuslist.
         APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Active' )     TO lt_statuses.
@@ -324,7 +326,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
         APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )      TO lt_statuses.
         APPEND NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' )  TO lt_statuses.
 
-        oo_result = lo_s3c->listjobs(               " oo_result is returned for testing purposes. "
+        oo_result = lo_s3c->listjobs(
           iv_accountid   = iv_account_id
           it_jobstatuses = lt_statuses ).
 
@@ -342,11 +344,11 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
 
   METHOD delete_job_tagging.
 
+    " snippet-start:[s3c.abapv1.delete_job_tagging]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_s3c) = /aws1/cl_s3c_factory=>create( lo_session ).
 
-    " snippet-start:[s3c.abapv1.delete_job_tagging]
     TRY.
         lo_s3c->deletejobtagging(
           iv_accountid = iv_account_id
