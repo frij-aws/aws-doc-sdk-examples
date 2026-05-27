@@ -141,20 +141,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     ENDIF.
 
     " ── Shared IoT thing ────────────────────────────────────────────────────
+    " Note: IoT TagResource does not support 'thing' resource type.
+    " Things are tracked by naming convention: sap-abap-iot-{uuid}.
     av_thing_name = |sap-abap-iot-{ av_uuid }|.
     DATA(lo_thing) = ao_iot->creatething( iv_thingname = av_thing_name ).
     IF lo_thing IS NOT BOUND OR lo_thing->get_thingarn( ) IS INITIAL.
       cl_abap_unit_assert=>fail( msg = 'class_setup: CreateThing returned empty ARN' ).
     ENDIF.
     av_thing_arn = lo_thing->get_thingarn( ).
-
-    " Tag the thing via IoT TagResource
-    ao_iot->tagresource(
-      iv_resourcearn = av_thing_arn
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) )
-      )
-    ).
 
     wait_for_thing( av_thing_name ).
 
@@ -335,16 +329,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       msg = 'create_thing: returned name must match'
     ).
 
-    " Tag and clean up
-    TRY.
-        ao_iot->tagresource(
-          iv_resourcearn = lo_result->get_thingarn( )
-          it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-            ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) )
-          )
-        ).
-      CATCH /aws1/cx_rt_generic.
-    ENDTRY.
+    " Clean up — things cannot be tagged via IoT TagResource; tracked by name convention.
     TRY.
         ao_iot->deletething( iv_thingname = lv_name ).
       CATCH /aws1/cx_rt_generic.
@@ -407,17 +392,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
   METHOD attach_thing_principal.
     " Uses a fresh thing and certificate so this test is self-contained.
+    " Things cannot be tagged via IoT TagResource; tracked by naming convention.
     DATA lv_thing TYPE /aws1/iotthingname.
     lv_thing = |sap-abap-iot-att-{ av_uuid }|.
 
-    DATA(lo_thing_r) = ao_iot->creatething( iv_thingname = lv_thing ).
-    DATA(lv_thing_arn_local) = lo_thing_r->get_thingarn( ).
-    ao_iot->tagresource(
-      iv_resourcearn = lv_thing_arn_local
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) )
-      )
-    ).
+    ao_iot->creatething( iv_thingname = lv_thing ).
     wait_for_thing( lv_thing ).
 
     DATA(lo_cert_r)  = ao_iot->createkeysandcertificate( abap_true ).
@@ -507,16 +486,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
   METHOD detach_thing_principal.
     " Use a dedicated thing + certificate so this test is isolated.
+    " Things cannot be tagged via IoT TagResource; tracked by naming convention.
     DATA lv_thing TYPE /aws1/iotthingname.
     lv_thing = |sap-abap-iot-det-{ av_uuid }|.
 
-    DATA(lo_thing_r) = ao_iot->creatething( iv_thingname = lv_thing ).
-    ao_iot->tagresource(
-      iv_resourcearn = lo_thing_r->get_thingarn( )
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) )
-      )
-    ).
+    ao_iot->creatething( iv_thingname = lv_thing ).
     wait_for_thing( lv_thing ).
 
     DATA(lo_cert_r) = ao_iot->createkeysandcertificate( abap_true ).
@@ -774,16 +748,11 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
   METHOD delete_thing.
     " Create a dedicated thing for this deletion test.
+    " Things cannot be tagged via IoT TagResource; tracked by naming convention.
     DATA lv_del_thing TYPE /aws1/iotthingname.
     lv_del_thing = |sap-abap-iot-dl-{ av_uuid }|.
 
-    DATA(lo_del_thing_r) = ao_iot->creatething( iv_thingname = lv_del_thing ).
-    ao_iot->tagresource(
-      iv_resourcearn = lo_del_thing_r->get_thingarn( )
-      it_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-        ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) )
-      )
-    ).
+    ao_iot->creatething( iv_thingname = lv_del_thing ).
     wait_for_thing( lv_del_thing ).
 
     " Execute the action under test.
