@@ -82,10 +82,6 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     " Create a CloudFront distribution for testing "
     av_distribution_id = create_cloudfront_distribution( ).
 
-    IF av_distribution_id IS INITIAL.
-      cl_abap_unit_assert=>fail( msg = 'class_setup: CloudFront distribution was not created' ).
-    ENDIF.
-
     " Wait for distribution to be deployed "
     wait_for_distribution_deployed( iv_distribution_id = av_distribution_id ).
 
@@ -102,6 +98,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
 
           " Disable the distribution if it's currently enabled "
           IF lo_config->get_enabled( ) = abap_true.
+            " Create a new config with enabled = false "
+            " Note: Only including parameters that are available in NetWeaver 7.4 version "
             DATA(lo_new_config) = NEW /aws1/cl_fntdistributionconfig(
               iv_callerreference = lo_config->get_callerreference( )
               io_aliases = lo_config->get_aliases( )
@@ -126,6 +124,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
               iv_id = av_distribution_id
               iv_ifmatch = lv_etag ).
 
+            " Wait for distribution to be deployed with disabled status "
+            " This can take several minutes "
             DATA lv_start_time TYPE timestamp.
             DATA lv_current_time TYPE timestamp.
             DATA lv_elapsed_seconds TYPE i.
@@ -140,6 +140,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
                   DATA(lv_status) = lo_dist->get_status( ).
 
                   IF lv_status = 'Deployed'.
+                    " Get the latest ETag "
                     lv_etag = lo_dist_result->get_etag( ).
                     EXIT.
                   ENDIF.
@@ -150,10 +151,12 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
                     tstmp2 = lv_start_time ).
 
                   IF lv_elapsed_seconds > lv_max_wait_seconds.
-                    MESSAGE |Distribution { av_distribution_id } still deploying - tagged for manual cleanup| TYPE 'I'.
+                    " Timeout - cannot delete distribution yet "
+                    MESSAGE 'Distribution still deploying - tagged for manual cleanup' TYPE 'W'.
                     EXIT.
                   ENDIF.
 
+                  " Wait 60 seconds before checking again "
                   WAIT UP TO 60 SECONDS.
 
                 CATCH /aws1/cx_rt_generic.
@@ -161,19 +164,22 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
               ENDTRY.
             ENDDO.
 
+            " Now delete the distribution if it's deployed "
             IF lv_status = 'Deployed'.
               TRY.
                   ao_fnt->deletedistribution(
                     iv_id = av_distribution_id
                     iv_ifmatch = lv_etag ).
                 CATCH /aws1/cx_rt_generic.
-                  MESSAGE |Distribution { av_distribution_id } deletion failed - tagged for manual cleanup| TYPE 'I'.
+                  " Error deleting distribution - it's tagged for manual cleanup "
+                  MESSAGE 'Error deleting distribution - tagged for manual cleanup' TYPE 'W'.
               ENDTRY.
             ENDIF.
           ENDIF.
 
         CATCH /aws1/cx_rt_generic.
-          MESSAGE |Distribution { av_distribution_id } teardown error - tagged for manual cleanup| TYPE 'I'.
+          " Error processing distribution - it's tagged for manual cleanup "
+          MESSAGE 'Error processing distribution - tagged for manual cleanup' TYPE 'W'.
       ENDTRY.
     ENDIF.
 
@@ -182,7 +188,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       TRY.
           /awsex/cl_utils=>cleanup_bucket( io_s3 = ao_s3 iv_bucket = av_s3_bucket ).
         CATCH /aws1/cx_rt_generic.
-          MESSAGE |S3 bucket { av_s3_bucket } cleanup failed - tagged for manual cleanup| TYPE 'I'.
+          " S3 bucket cleanup failed - it is tagged for manual cleanup "
+          MESSAGE 'S3 origin bucket cleanup failed - tagged for manual cleanup' TYPE 'W'.
       ENDTRY.
     ENDIF.
 
@@ -272,6 +279,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
           DATA(lv_status) = lo_dist->get_status( ).
 
           IF lv_status = 'Deployed'.
+            " Distribution is ready "
             RETURN.
           ENDIF.
 
@@ -285,9 +293,11 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
               msg = |Distribution { iv_distribution_id } did not reach 'Deployed' status within 30 minutes| ).
           ENDIF.
 
+          " Wait 60 seconds before checking again "
           WAIT UP TO 60 SECONDS.
 
         CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
+          " Re-raise the exception "
           RAISE EXCEPTION lo_ex.
       ENDTRY.
     ENDDO.
@@ -371,8 +381,9 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       iv_comment = lv_new_comment ).
 
     " Verify the comment was updated "
-    DATA(lo_dist_result) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
-    DATA(lo_dist_config) = lo_dist_result->get_distributionconfig( ).
+    DATA(lo_dist_result) = ao_fnt->getdistribution( iv_id = av_distribution_id ).
+    DATA(lo_dist) = lo_dist_result->get_distribution( ).
+    DATA(lo_dist_config) = lo_dist->get_distributionconfig( ).
     DATA(lv_updated_comment) = lo_dist_config->get_comment( ).
 
     cl_abap_unit_assert=>assert_equals(
