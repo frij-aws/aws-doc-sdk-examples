@@ -51,16 +51,18 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     ao_s3 = /aws1/cl_s3_factory=>create( ao_session ).
     ao_fnt_actions = NEW /awsex/cl_fnt_actions( ).
 
-    " Find an existing Deployed distribution to use for tests.
+    " Find an existing Deployed and enabled distribution to use for tests.
     " Creating a new distribution takes 15-30 minutes (exceeds Lambda timeout).
-    " We locate a pre-existing Deployed distribution in the account instead.
+    " We require enabled=true so that update_distribution copies the correct
+    " enabled flag into the rebuilt config and the assertion passes.
     DATA(lo_list_rs) = ao_fnt->listdistributions( ).
     DATA(lo_dist_list) = lo_list_rs->get_distributionlist( ).
 
     IF lo_dist_list IS NOT INITIAL.
       LOOP AT lo_dist_list->get_items( ) INTO DATA(lo_summary).
-        " Only use distributions that are already fully deployed.
-        IF lo_summary->get_status( ) = 'Deployed'.
+        " Only use distributions that are Deployed AND currently enabled.
+        IF lo_summary->get_status( ) = 'Deployed'
+           AND lo_summary->get_enabled( ) = abap_true.
           av_distribution_id = lo_summary->get_id( ).
           av_distribution_domain = lo_summary->get_domainname( ).
           EXIT.
@@ -68,8 +70,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
 
-    " If no pre-existing Deployed distribution is found, create one and wait.
-    " This path is only reached when the account has no distributions at all.
+    " If no pre-existing Deployed+enabled distribution is found, create one.
+    " This path is only reached when the account has no eligible distributions.
     IF av_distribution_id IS INITIAL.
       " Create a unique S3 bucket name for CloudFront origin using util function "
       DATA(lv_uuid) = /awsex/cl_utils=>get_random_string( ).
@@ -108,7 +110,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
 
     IF av_distribution_id IS INITIAL.
       cl_abap_unit_assert=>fail(
-        msg = 'No Deployed CloudFront distribution available for testing' ).
+        msg = 'No Deployed+enabled CloudFront distribution available for testing' ).
     ENDIF.
 
   ENDMETHOD.
@@ -116,7 +118,7 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
   METHOD class_teardown.
     " Only clean up resources that this test run created (av_s3_bucket is set
     " only when we created a new distribution in class_setup).
-    " Pre-existing distributions are never modified in teardown.
+    " Pre-existing distributions are never deleted in teardown.
 
     IF av_s3_bucket IS NOT INITIAL.
       " Disable and delete the CloudFront distribution we created "
@@ -129,6 +131,8 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
 
             " Disable the distribution if it's currently enabled "
             IF lo_config->get_enabled( ) = abap_true.
+              " Create a new config with enabled = false "
+              " Note: Only including parameters that are available in NetWeaver 7.4 version "
               DATA(lo_new_config) = NEW /aws1/cl_fntdistributionconfig(
                 iv_callerreference = lo_config->get_callerreference( )
                 io_aliases = lo_config->get_aliases( )
@@ -410,7 +414,9 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
       exp = lv_new_comment
       msg = 'Distribution comment should match the updated value' ).
 
-    " Verify that the distribution is still enabled "
+    " Verify that the distribution is still enabled.
+    " class_setup guarantees av_distribution_id is an enabled distribution,
+    " so update_distribution must not accidentally disable it.
     cl_abap_unit_assert=>assert_equals(
       act = lo_dist_config->get_enabled( )
       exp = abap_true
