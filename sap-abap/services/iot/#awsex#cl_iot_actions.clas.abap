@@ -123,14 +123,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |IoT thing created: { iv_thing_name } ARN: { oo_result->get_thingarn( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotresrcalrdyexistsex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex2).
         MESSAGE lo_ex2->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex2->get_text( ).
+        RAISE EXCEPTION lo_ex2.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_thing]
   ENDMETHOD.
@@ -147,9 +143,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Retrieved { lines( oo_result->get_things( ) ) } IoT things| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_things]
   ENDMETHOD.
@@ -166,9 +160,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Certificate created: { oo_result->get_certificateid( ) }| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_keys_and_certificate]
   ENDMETHOD.
@@ -188,9 +180,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Principal attached to thing: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.attach_thing_principal]
   ENDMETHOD.
@@ -211,9 +201,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Endpoint address: { ov_address }| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.describe_endpoint]
   ENDMETHOD.
@@ -230,9 +218,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Retrieved { lines( oo_result->get_certificates( ) ) } IoT certificates| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_certificates]
   ENDMETHOD.
@@ -252,9 +238,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Principal detached from thing: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.detach_thing_principal]
   ENDMETHOD.
@@ -278,9 +262,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Certificate deleted: { iv_certificate_id }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_certificate]
   ENDMETHOD.
@@ -312,12 +294,11 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         ).
         MESSAGE |Topic rule created: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresrcalrdyexistsex INTO DATA(lo_ex).
-        MESSAGE |Topic rule { iv_rule_name } already exists.| TYPE 'I'.
+        MESSAGE lo_ex->get_text( ) TYPE 'I'.
+        RAISE EXCEPTION lo_ex.
       CATCH /aws1/cx_iotsqlparseexception INTO DATA(lo_sql_ex).
         MESSAGE lo_sql_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_sql_ex->get_text( ).
+        RAISE EXCEPTION lo_sql_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.create_topic_rule]
   ENDMETHOD.
@@ -334,9 +315,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Retrieved { lines( oo_result->get_rules( ) ) } IoT topic rules| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.list_topic_rules]
   ENDMETHOD.
@@ -356,14 +335,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Found { lines( oo_result->get_things( ) ) } things matching query| TYPE 'I'.
       CATCH /aws1/cx_iotindexnotreadyex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_ex2).
         MESSAGE lo_ex2->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex2->get_text( ).
+        RAISE EXCEPTION lo_ex2.
     ENDTRY.
     " snippet-end:[iot.abapv1.search_index]
   ENDMETHOD.
@@ -385,9 +360,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE 'IoT thing indexing configuration updated to REGISTRY mode.' TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.update_indexing_configuration]
   ENDMETHOD.
@@ -406,9 +379,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |IoT thing deleted: { iv_thing_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresourcenotfoundex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_thing]
   ENDMETHOD.
@@ -427,9 +398,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
         MESSAGE |Topic rule deleted: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
-          EXPORTING
-            iv_msg = lo_ex->get_text( ).
+        RAISE EXCEPTION lo_ex.
     ENDTRY.
     " snippet-end:[iot.abapv1.delete_topic_rule]
   ENDMETHOD.
