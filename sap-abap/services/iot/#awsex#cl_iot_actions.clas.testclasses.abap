@@ -17,7 +17,6 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     " ── Resources shared by non-destructive tests ────────────────────────
     " Shared IoT thing (used by list_things, attach/detach, list_certs, etc.)
     CLASS-DATA av_thing_name    TYPE /aws1/iotthingname.
-    CLASS-DATA av_thing_arn     TYPE /aws1/iotthingarn.
     " Shared certificate attached to the shared thing
     CLASS-DATA av_cert_id       TYPE /aws1/iotcertificateid.
     CLASS-DATA av_cert_arn      TYPE /aws1/iotcertificatearn.
@@ -27,7 +26,6 @@ CLASS ltc_awsex_cl_iot_actions DEFINITION FOR TESTING DURATION LONG RISK LEVEL D
     CLASS-DATA av_iam_role_arn  TYPE /aws1/iamarntype.
     " Shared topic rule (used by list_topic_rules)
     CLASS-DATA av_rule_name     TYPE /aws1/iotrulename.
-    CLASS-DATA av_rule_arn      TYPE /aws1/iotresourcearn.
 
     " ── Dedicated resources for destructive (delete) tests ───────────────
     CLASS-DATA av_del_thing_name TYPE /aws1/iotthingname.
@@ -81,12 +79,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_thing
       msg = |class_setup: failed to create shared thing { av_thing_name }| ).
-    av_thing_arn = lo_thing->get_thingarn( ).
 
-    " Tag the thing with convert_test.
-    ao_iot->tagresource(
-      iv_resourcearn = av_thing_arn
-      it_tags        = build_iot_tags( ) ).
+    " Note: IoT things do not support TagResource. Things are tracked by
+    " naming convention (sap-abap-iot-*) for identification and cleanup.
 
     " ── Shared certificate ───────────────────────────────────────────────
     DATA(lo_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
@@ -177,10 +172,10 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     " Derive the rule ARN so we can tag it.
     DATA(lv_acct)   = ao_session->get_account_id( ).
     DATA(lv_region) = ao_session->get_region( ).
-    av_rule_arn = |arn:aws:iot:{ lv_region }:{ lv_acct }:rule/{ av_rule_name }|.
+    DATA(lv_rule_arn) = |arn:aws:iot:{ lv_region }:{ lv_acct }:rule/{ av_rule_name }|.
 
     ao_iot->tagresource(
-      iv_resourcearn = av_rule_arn
+      iv_resourcearn = lv_rule_arn
       it_tags        = build_iot_tags( ) ).
 
     " ── Dedicated thing for delete_thing test ────────────────────────────
@@ -189,9 +184,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound(
       act = lo_del_thing
       msg = |class_setup: failed to create dedicated delete-thing { av_del_thing_name }| ).
-    ao_iot->tagresource(
-      iv_resourcearn = lo_del_thing->get_thingarn( )
-      it_tags        = build_iot_tags( ) ).
+    " Note: IoT things do not support TagResource. Tracked by name convention.
 
     " ── Dedicated certificate for delete_certificate test ────────────────
     DATA(lo_del_cert) = ao_iot->createkeysandcertificate( iv_setasactive = abap_true ).
@@ -354,11 +347,8 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       act = lo_result->get_thingarn( )
       msg = |create_thing: ARN is empty| ).
 
-    " Tag the newly created thing and clean up.
+    " Clean up the newly created thing.
     TRY.
-        ao_iot->tagresource(
-          iv_resourcearn = lo_result->get_thingarn( )
-          it_tags        = build_iot_tags( ) ).
         ao_iot->deletething( iv_thingname = lv_name ).
       CATCH /aws1/cx_rt_generic.
     ENDTRY.
