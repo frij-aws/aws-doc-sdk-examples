@@ -19,12 +19,12 @@ CLASS /awsex/cl_iot_actions DEFINITION
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists all AWS IoT things across all pages.
-    " @parameter ot_things | The complete list of all things
+    " Lists all AWS IoT things, paginating through all pages.
+    " @parameter oo_result | The result object from the final page
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_things
       RETURNING
-        VALUE(ot_things) TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlistthingsresponse
       RAISING
         /aws1/cx_rt_generic.
 
@@ -61,12 +61,12 @@ CLASS /awsex/cl_iot_actions DEFINITION
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists all AWS IoT certificates across all pages.
-    " @parameter ot_certs | The complete list of all certificates
+    " Lists all AWS IoT certificates, paginating through all pages.
+    " @parameter oo_result | The result object from the final page
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_certificates
       RETURNING
-        VALUE(ot_certs) TYPE /aws1/cl_iotcertificate=>tt_certificates
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlistcertsresponse
       RAISING
         /aws1/cx_rt_generic.
 
@@ -105,12 +105,12 @@ CLASS /awsex/cl_iot_actions DEFINITION
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists all AWS IoT topic rules across all pages.
-    " @parameter ot_rules | The complete list of all topic rules
+    " Lists all AWS IoT topic rules, paginating through all pages.
+    " @parameter oo_result | The result object from the final page
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_topic_rules
       RETURNING
-        VALUE(ot_rules) TYPE /aws1/cl_iottopicrulelstitem=>tt_topicruleslist
+        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlisttopicrulesrsp
       RAISING
         /aws1/cx_rt_generic.
 
@@ -185,17 +185,18 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
     TRY.
         " Collect all things by following the pagination token.
         DATA lv_nexttoken TYPE /aws1/iotnexttoken.
+        DATA lv_count     TYPE i.
 
         DO.
-          DATA(lo_result) = lo_iot->listthings( iv_nexttoken = lv_nexttoken ).
-          APPEND LINES OF lo_result->get_things( ) TO ot_things.
-          lv_nexttoken = lo_result->get_nexttoken( ).
+          oo_result  = lo_iot->listthings( iv_nexttoken = lv_nexttoken ).
+          lv_count   = lv_count + lines( oo_result->get_things( ) ).
+          lv_nexttoken = oo_result->get_nexttoken( ).
           IF lv_nexttoken IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( ot_things ) } IoT things.| TYPE 'I'.
+        MESSAGE |Retrieved { lv_count } IoT things.| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'I'.
         RAISE EXCEPTION NEW /aws1/cx_rt_service_generic( ).
@@ -273,17 +274,18 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
     TRY.
         " Collect all certificates by following the pagination marker.
         DATA lv_marker TYPE /aws1/iotmarker.
+        DATA lv_count  TYPE i.
 
         DO.
-          DATA(lo_result) = lo_iot->listcertificates( iv_marker = lv_marker ).
-          APPEND LINES OF lo_result->get_certificates( ) TO ot_certs.
-          lv_marker = lo_result->get_nextmarker( ).
+          oo_result = lo_iot->listcertificates( iv_marker = lv_marker ).
+          lv_count  = lv_count + lines( oo_result->get_certificates( ) ).
+          lv_marker = oo_result->get_nextmarker( ).
           IF lv_marker IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( ot_certs ) } IoT certificates.| TYPE 'I'.
+        MESSAGE |Retrieved { lv_count } IoT certificates.| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'I'.
         RAISE EXCEPTION NEW /aws1/cx_rt_service_generic( ).
@@ -382,17 +384,18 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
     TRY.
         " Collect all topic rules by following the pagination token.
         DATA lv_nexttoken TYPE /aws1/iotnexttoken.
+        DATA lv_count     TYPE i.
 
         DO.
-          DATA(lo_result) = lo_iot->listtopicrules( iv_nexttoken = lv_nexttoken ).
-          APPEND LINES OF lo_result->get_rules( ) TO ot_rules.
-          lv_nexttoken = lo_result->get_nexttoken( ).
+          oo_result    = lo_iot->listtopicrules( iv_nexttoken = lv_nexttoken ).
+          lv_count     = lv_count + lines( oo_result->get_rules( ) ).
+          lv_nexttoken = oo_result->get_nexttoken( ).
           IF lv_nexttoken IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        MESSAGE |Retrieved { lines( ot_rules ) } IoT topic rules.| TYPE 'I'.
+        MESSAGE |Retrieved { lv_count } IoT topic rules.| TYPE 'I'.
       CATCH /aws1/cx_rt_service_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
