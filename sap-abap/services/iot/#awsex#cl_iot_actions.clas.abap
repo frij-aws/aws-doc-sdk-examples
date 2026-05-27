@@ -100,8 +100,8 @@ CLASS /awsex/cl_iot_actions DEFINITION
       IMPORTING
         !iv_rule_name      TYPE /aws1/iotrulename
         !iv_topic          TYPE /aws1/iottopic
-        !iv_sns_action_arn TYPE /aws1/iotamazonresourcename
-        !iv_role_arn       TYPE /aws1/iotrolearn
+        !iv_sns_action_arn TYPE /aws1/iotstring
+        !iv_role_arn       TYPE /aws1/iotstring
       RAISING
         /aws1/cx_rt_generic.
 
