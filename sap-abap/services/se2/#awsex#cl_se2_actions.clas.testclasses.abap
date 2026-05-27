@@ -100,6 +100,10 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     " 2. We can still test the API operations without verified identity
     " 3. Send tests will handle MessageRejected exception appropriately
 
+    " Pause between management API calls: SES v2 allows ~1 TPS for
+    " CreateEmailIdentity, CreateEmailTemplate, and similar operations.
+    WAIT UP TO 2 SECONDS.
+
     " Create contact list for tests
     " Note: SES Sandbox allows only 1 contact list per account
     " If limit is reached, find and use existing list
@@ -151,6 +155,8 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
           msg = |Failed to create contact list: { lo_list_ex2->get_text( ) }| ).
     ENDTRY.
 
+    WAIT UP TO 2 SECONDS.
+
     " Create email template for tests
     TRY.
         DATA(lo_template_content) = NEW /aws1/cl_se2emailtmplcontent(
@@ -176,6 +182,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     ENDTRY.
 
     " Create dedicated template for delete_email_template test (new)
+    WAIT UP TO 2 SECONDS.
     av_del_tmpl_name = |del-tmpl-{ av_uuid }|.
     TRY.
         DATA(lo_del_tmpl_content) = NEW /aws1/cl_se2emailtmplcontent(
@@ -196,6 +203,7 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     ENDTRY.
 
     " Create dedicated identity for delete_email_identity test (new)
+    WAIT UP TO 2 SECONDS.
     av_del_identity = |se2del-{ av_uuid }@example.com|.
     TRY.
         ao_se2->createemailidentity( iv_emailidentity = av_del_identity ).
@@ -388,6 +396,9 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
   METHOD create_email_template.
     DATA(lv_test_uuid) = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_test_template) = |tst-tmp-{ lv_test_uuid(8) }|.
+
+    " Brief pause to avoid TooManyRequestsException after rapid class_setup calls.
+    WAIT UP TO 2 SECONDS.
 
     " Call the action method
     ao_se2_actions->create_email_template(
@@ -603,6 +614,9 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     DATA(lv_test_uuid) = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_test_template) = |tst-del-{ lv_test_uuid(8) }|.
 
+    " Brief pause to avoid TooManyRequestsException after rapid class_setup calls.
+    WAIT UP TO 2 SECONDS.
+
     " Create the template
     DATA(lo_template_content) = NEW /aws1/cl_se2emailtmplcontent(
       iv_subject = 'Test Delete'
@@ -634,6 +648,9 @@ CLASS ltc_awsex_cl_se2_actions IMPLEMENTATION.
     " Create a new identity to delete
     DATA(lv_test_uuid) = /awsex/cl_utils=>get_random_string( ).
     DATA(lv_test_identity) = |test{ lv_test_uuid }@example.com|.
+
+    " Brief pause to avoid TooManyRequestsException after rapid class_setup calls.
+    WAIT UP TO 2 SECONDS.
 
     " Create the identity
     ao_se2->createemailidentity( iv_emailidentity = lv_test_identity ).
