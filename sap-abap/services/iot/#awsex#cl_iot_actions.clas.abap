@@ -121,13 +121,16 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
           iv_thingname = iv_thing_name
         ).
         MESSAGE |IoT thing created: { iv_thing_name } ARN: { oo_result->get_thingarn( ) }| TYPE 'I'.
-      CATCH /aws1/cx_iotresrcalrdyexistsex.
-        MESSAGE |Thing { iv_thing_name } already exists.| TYPE 'I'.
-      CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex).
+      CATCH /aws1/cx_iotresrcalrdyexistsex INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
           EXPORTING
             iv_msg = lo_ex->get_text( ).
+      CATCH /aws1/cx_iotinvalidrequestex INTO DATA(lo_ex2).
+        MESSAGE lo_ex2->get_text( ) TYPE 'I'.
+        RAISE EXCEPTION TYPE /aws1/cx_rt_service_generic
+          EXPORTING
+            iv_msg = lo_ex2->get_text( ).
     ENDTRY.
     " snippet-end:[iot.abapv1.create_thing]
   ENDMETHOD.
@@ -375,7 +378,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
     TRY.
         lo_iot->updateindexingconfiguration(
           io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
-            " iv_thingindexingmode = 'REGISTRY'
+            " iv_thingindexingmode = 'REGISTRY' (other options: OFF, REGISTRY_AND_SHADOW)
             iv_thingindexingmode = 'REGISTRY'
           )
         ).
