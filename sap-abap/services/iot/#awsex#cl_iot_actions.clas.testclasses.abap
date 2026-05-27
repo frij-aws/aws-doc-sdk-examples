@@ -76,7 +76,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     CONDENSE lv_uuid NO-GAPS.
 
     " ── Shared IoT thing ─────────────────────────────────────────────────
-    av_thing_name = |sap-abap-iot-{ lv_uuid(16) }|.
+    av_thing_name = |sap-abap-iot-{ lv_uuid }|.
     DATA(lo_thing) = ao_iot->creatething( iv_thingname = av_thing_name ).
     cl_abap_unit_assert=>assert_bound(
       act = lo_thing
@@ -108,7 +108,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     lo_sns_tag = NEW /aws1/cl_snstag( iv_key = 'convert_test' iv_value = 'true' ).
     APPEND lo_sns_tag TO lt_sns_tags.
     DATA(lo_sns_result) = ao_sns->createtopic(
-      iv_name = |sap-abap-iot-sns-{ lv_uuid(16) }|
+      iv_name = |sap-abap-iot-sns-{ lv_uuid }|
       it_tags = lt_sns_tags ).
     av_sns_topic_arn = lo_sns_result->get_topicarn( ).
     cl_abap_unit_assert=>assert_not_initial(
@@ -122,7 +122,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       `"Principal":{"Service":"iot.amazonaws.com"},` &&
       `"Action":"sts:AssumeRole"}]}`.
 
-    av_iam_role_name = |sap-abap-iot-role-{ lv_uuid(16) }|.
+    av_iam_role_name = |sap-abap-iot-role-{ lv_uuid }|.
 
     DATA lt_iam_tags TYPE /aws1/cl_iamtag=>tt_taglisttype.
     DATA lo_iam_tag  TYPE REF TO /aws1/cl_iamtag.
@@ -151,7 +151,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     " ── Shared topic rule (used by list_topic_rules test) ────────────────
     " IoT rule names allow only letters, numbers, and underscores.
-    av_rule_name = |sap_abap_iot_rule_{ lv_uuid(16) }|.
+    av_rule_name = |sap_abap_iot_rule_{ lv_uuid }|.
     REPLACE ALL OCCURRENCES OF '-' IN av_rule_name WITH '_'.
 
     DATA lt_actions TYPE /aws1/cl_iotaction=>tt_actionlist.
@@ -184,7 +184,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       it_tags        = build_iot_tags( ) ).
 
     " ── Dedicated thing for delete_thing test ────────────────────────────
-    av_del_thing_name = |sap-abap-iot-del-{ lv_uuid(16) }|.
+    av_del_thing_name = |sap-abap-iot-del-{ lv_uuid }|.
     DATA(lo_del_thing) = ao_iot->creatething( iv_thingname = av_del_thing_name ).
     cl_abap_unit_assert=>assert_bound(
       act = lo_del_thing
@@ -201,7 +201,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     av_del_cert_id = lo_del_cert->get_certificateid( ).
 
     " ── Dedicated topic rule for delete_topic_rule test ──────────────────
-    av_del_rule_name = |sap_abap_iot_del_{ lv_uuid(16) }|.
+    av_del_rule_name = |sap_abap_iot_del_{ lv_uuid }|.
     REPLACE ALL OCCURRENCES OF '-' IN av_del_rule_name WITH '_'.
 
     DATA lt_del_actions  TYPE /aws1/cl_iotaction=>tt_actionlist.
@@ -337,7 +337,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA lv_uuid TYPE string.
     lv_uuid = /awsex/cl_utils=>get_random_string( ).
     CONDENSE lv_uuid NO-GAPS.
-    DATA(lv_name) = CONV /aws1/iotthingname( |sap-abap-iot-new-{ lv_uuid(16) }| ).
+    DATA(lv_name) = CONV /aws1/iotthingname( |sap-abap-iot-new-{ lv_uuid }| ).
 
     DATA(lo_result) = ao_iot_actions->create_thing( iv_thing_name = lv_name ).
 
@@ -625,7 +625,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     DATA lv_uuid TYPE string.
     lv_uuid = /awsex/cl_utils=>get_random_string( ).
     CONDENSE lv_uuid NO-GAPS.
-    DATA(lv_rule) = CONV /aws1/iotrulename( |sap_abap_iot_new_{ lv_uuid(16) }| ).
+    DATA(lv_rule) = CONV /aws1/iotrulename( |sap_abap_iot_new_{ lv_uuid }| ).
     REPLACE ALL OCCURRENCES OF '-' IN lv_rule WITH '_'.
 
     ao_iot_actions->create_topic_rule(
