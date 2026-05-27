@@ -141,9 +141,6 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       iv_policyname     = 'IoTSNSPublish'
       iv_policydocument = lv_policy ).
 
-    " IAM changes can take a few seconds to propagate.
-    WAIT UP TO 5 SECONDS.
-
     " ── Shared topic rule (used by list_topic_rules test) ────────────────
     " IoT rule names allow only letters, numbers, and underscores.
     av_rule_name = |sap_abap_iot_rule_{ lv_uuid }|.
@@ -165,9 +162,30 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       EXPORTING
         iv_sql     = |SELECT * FROM 'test/sap/abap/shared'|
         it_actions = lt_actions.
-    ao_iot->createtopicrule(
-      iv_rulename         = av_rule_name
-      io_topicrulepayload = lo_payload ).
+
+    " Poll until IoT can assume the newly created IAM role (eventual consistency).
+    " InvalidRequestException with 'unable to assume role' means the role is not
+    " yet propagated — retry with backoff for up to 60 seconds.
+    DATA lv_rule_created TYPE abap_bool VALUE abap_false.
+    DATA lv_retries      TYPE i         VALUE 0.
+    WHILE lv_retries < 12 AND lv_rule_created = abap_false.
+      TRY.
+          ao_iot->createtopicrule(
+            iv_rulename         = av_rule_name
+            io_topicrulepayload = lo_payload ).
+          lv_rule_created = abap_true.
+        CATCH /aws1/cx_iotinvalidrequestex.
+          lv_retries = lv_retries + 1.
+          WAIT UP TO 5 SECONDS.
+        CATCH /aws1/cx_iotresrcalrdyexistsex.
+          lv_rule_created = abap_true.
+      ENDTRY.
+    ENDWHILE.
+
+    IF lv_rule_created = abap_false.
+      cl_abap_unit_assert=>fail(
+        msg = |class_setup: IAM role { av_iam_role_name } not assumable by IoT after 60s| ).
+    ENDIF.
 
     " Derive the rule ARN so we can tag it.
     DATA(lv_acct)   = ao_session->get_account_id( ).
@@ -213,9 +231,28 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       EXPORTING
         iv_sql     = |SELECT * FROM 'test/sap/abap/del'|
         it_actions = lt_del_actions.
-    ao_iot->createtopicrule(
-      iv_rulename         = av_del_rule_name
-      io_topicrulepayload = lo_del_payload ).
+
+    " Same IAM propagation retry for the dedicated delete rule.
+    DATA lv_del_rule_created TYPE abap_bool VALUE abap_false.
+    DATA lv_del_retries      TYPE i         VALUE 0.
+    WHILE lv_del_retries < 12 AND lv_del_rule_created = abap_false.
+      TRY.
+          ao_iot->createtopicrule(
+            iv_rulename         = av_del_rule_name
+            io_topicrulepayload = lo_del_payload ).
+          lv_del_rule_created = abap_true.
+        CATCH /aws1/cx_iotinvalidrequestex.
+          lv_del_retries = lv_del_retries + 1.
+          WAIT UP TO 5 SECONDS.
+        CATCH /aws1/cx_iotresrcalrdyexistsex.
+          lv_del_rule_created = abap_true.
+      ENDTRY.
+    ENDWHILE.
+
+    IF lv_del_rule_created = abap_false.
+      cl_abap_unit_assert=>fail(
+        msg = |class_setup: del rule { av_del_rule_name } could not be created after 60s| ).
+    ENDIF.
 
     DATA(lv_del_rule_arn) =
       |arn:aws:iot:{ lv_region }:{ lv_acct }:rule/{ av_del_rule_name }|.
