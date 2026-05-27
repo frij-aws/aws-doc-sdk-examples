@@ -9,8 +9,8 @@ CLASS /awsex/cl_fnt_actions DEFINITION
   PUBLIC SECTION.
 
     METHODS list_distributions
-      RETURNING
-        VALUE(oo_result) TYPE REF TO /aws1/cl_fntlstdistributionsrs
+      EXPORTING
+        !oo_result TYPE REF TO /aws1/cl_fntlstdistributionsrs
       RAISING
         /aws1/cx_rt_generic.
 
@@ -27,7 +27,7 @@ ENDCLASS.
 
 
 
-CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
+CLASS /AWSEX/CL_FNT_ACTIONS IMPLEMENTATION.
 
 
   METHOD list_distributions.
@@ -41,7 +41,7 @@ CLASS /awsex/cl_fnt_actions IMPLEMENTATION.
     TRY.
         oo_result = lo_fnt->listdistributions( ).
         DATA(lo_distribution_list) = oo_result->get_distributionlist( ).
-        MESSAGE |Retrieved { lo_distribution_list->get_quantity( ) } CloudFront distributions| TYPE 'I'.
+        MESSAGE |Retrieved { lines( lo_distribution_list->get_items( ) ) } CloudFront distributions| TYPE 'I'.
       CATCH /aws1/cx_fntinvalidargument INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
     ENDTRY.
