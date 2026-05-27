@@ -140,6 +140,20 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       cl_abap_unit_assert=>fail( msg = 'class_setup: SNS topic creation returned empty ARN' ).
     ENDIF.
 
+    " ── Enable indexing early so the shared thing propagates into the index ──
+    " UpdateIndexingConfiguration is called here (before thing creation) so the
+    " fleet index is active and ingesting new things from the moment they are
+    " created. This gives the index the maximum time to propagate before the
+    " search_index test runs.
+    TRY.
+        ao_iot->updateindexingconfiguration(
+          io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
+            iv_thingindexingmode = 'REGISTRY'
+          )
+        ).
+      CATCH /aws1/cx_rt_generic.
+    ENDTRY.
+
     " ── Shared IoT thing ────────────────────────────────────────────────────
     " Note: IoT TagResource does not support 'thing' resource type.
     " Things are tracked by naming convention: sap-abap-iot-{uuid}.
@@ -666,18 +680,20 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     " Ensure the index service is ACTIVE before searching.
     wait_for_index_active( ).
 
-    " IoT Fleet Indexing has an eventual-consistency propagation delay after a
-    " thing is created. The index status being ACTIVE means the service accepts
-    " queries, but individual things may not yet appear in results. Poll until
-    " the shared thing is visible in the index, up to 5 minutes (60 × 5 s).
-    DATA lv_found     TYPE abap_bool.
-    DATA lv_attempts  TYPE i VALUE 0.
-    DATA lo_result    TYPE REF TO /aws1/cl_iotsearchindexrsp.
+    " IoT Fleet Indexing is eventually consistent — the index being ACTIVE means
+    " the service accepts queries, but a newly-created thing may not appear in
+    " results for up to several minutes. Poll the action under test directly
+    " until the thing is visible or the timeout expires.
+    " Ceiling: 60 attempts × 5 s = 5 minutes.
+    DATA lo_result   TYPE REF TO /aws1/cl_iotsearchindexrsp.
+    DATA lv_found    TYPE abap_bool.
+    DATA lv_attempts TYPE i VALUE 0.
 
     WHILE lv_attempts < 60 AND lv_found = abap_false.
       TRY.
-          lo_result = ao_iot->searchindex(
-            iv_querystring = |thingName:{ av_thing_name }|
+          lo_result = ao_actions->search_index(
+            " iv_query = 'thingName:sap-abap-iot-*'
+            iv_query = |thingName:{ av_thing_name }|
           ).
           LOOP AT lo_result->get_things( ) INTO DATA(lo_thing).
             IF lo_thing->get_thingname( ) = av_thing_name.
@@ -694,31 +710,23 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       ENDIF.
     ENDWHILE.
 
-    " Now call the action under test and assert on its result.
-    DATA(lo_action_result) = ao_actions->search_index(
-      " iv_query = 'thingName:sap-abap-iot-*'
-      iv_query = |thingName:{ av_thing_name }|
-    ).
+    " Fail explicitly if the thing never appeared — do not silently continue.
+    IF lv_found = abap_false.
+      cl_abap_unit_assert=>fail(
+        msg = |search_index: shared thing { av_thing_name } did not appear in index after 5 minutes|
+      ).
+    ENDIF.
 
     cl_abap_unit_assert=>assert_bound(
-      act = lo_action_result
+      act = lo_result
       msg = 'search_index: result must be bound'
     ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lines( lo_action_result->get_things( ) )
+      act = lines( lo_result->get_things( ) )
       msg = |search_index: must find at least the shared thing { av_thing_name }|
     ).
-
-    DATA lv_found2 TYPE abap_bool.
-    LOOP AT lo_action_result->get_things( ) INTO DATA(lo_thing2).
-      IF lo_thing2->get_thingname( ) = av_thing_name.
-        lv_found2 = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
     cl_abap_unit_assert=>assert_true(
-      act = lv_found2
+      act = lv_found
       msg = |search_index: shared thing { av_thing_name } must appear in results|
     ).
   ENDMETHOD.
