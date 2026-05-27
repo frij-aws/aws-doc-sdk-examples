@@ -41,8 +41,6 @@ CLASS /awsex/cl_se2_actions DEFINITION
         !iv_subject            TYPE /aws1/se2messagedata
         !iv_html_body          TYPE /aws1/se2messagedata
         !iv_text_body          TYPE /aws1/se2messagedata
-      RETURNING
-        VALUE(oo_result)       TYPE REF TO /aws1/cl_se2sendemailresponse
       RAISING
         /aws1/cx_rt_generic.
 
@@ -53,8 +51,6 @@ CLASS /awsex/cl_se2_actions DEFINITION
         !iv_template_name      TYPE /aws1/se2emailtemplatename
         !iv_template_data      TYPE /aws1/se2emailtemplatedata
         !iv_contact_list_name  TYPE /aws1/se2contactlistname
-      RETURNING
-        VALUE(oo_result)       TYPE REF TO /aws1/cl_se2sendemailresponse
       RAISING
         /aws1/cx_rt_generic.
 
@@ -235,11 +231,11 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
           io_simple = lo_message ).
 
         " Send the email
-        oo_result = lo_se2->sendemail(
+        lo_se2->sendemail(
           iv_fromemailaddress = iv_from_email_address
           io_destination = lo_destination
           io_content = lo_content ).
-        MESSAGE |Email sent successfully: { oo_result->get_messageid( ) }| TYPE 'I'.
+        MESSAGE 'Email sent successfully.' TYPE 'I'.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_account_suspended).
         MESSAGE 'Account suspended.' TYPE 'I'.
         RAISE EXCEPTION lo_account_suspended.
@@ -280,12 +276,12 @@ CLASS /awsex/cl_se2_actions IMPLEMENTATION.
           iv_contactlistname = iv_contact_list_name ).
 
         " Send the email using template
-        oo_result = lo_se2->sendemail(
+        lo_se2->sendemail(
           iv_fromemailaddress = iv_from_email_address
           io_destination = lo_destination
           io_content = lo_content
           io_listmanagementoptions = lo_list_mgmt ).
-        MESSAGE |Email sent using template successfully: { oo_result->get_messageid( ) }| TYPE 'I'.
+        MESSAGE 'Email sent using template successfully.' TYPE 'I'.
       CATCH /aws1/cx_se2accountsuspendedex INTO DATA(lo_account_suspended).
         MESSAGE 'Account suspended.' TYPE 'I'.
         RAISE EXCEPTION lo_account_suspended.
