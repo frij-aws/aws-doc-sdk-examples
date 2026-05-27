@@ -663,34 +663,62 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 
   METHOD search_index.
-    " Ensure the index is ACTIVE before searching.
+    " Ensure the index service is ACTIVE before searching.
     wait_for_index_active( ).
 
-    DATA(lo_result) = ao_actions->search_index(
+    " IoT Fleet Indexing has an eventual-consistency propagation delay after a
+    " thing is created. The index status being ACTIVE means the service accepts
+    " queries, but individual things may not yet appear in results. Poll until
+    " the shared thing is visible in the index, up to 5 minutes (60 × 5 s).
+    DATA lv_found     TYPE abap_bool.
+    DATA lv_attempts  TYPE i VALUE 0.
+    DATA lo_result    TYPE REF TO /aws1/cl_iotsearchindexrsp.
+
+    WHILE lv_attempts < 60 AND lv_found = abap_false.
+      TRY.
+          lo_result = ao_iot->searchindex(
+            iv_querystring = |thingName:{ av_thing_name }|
+          ).
+          LOOP AT lo_result->get_things( ) INTO DATA(lo_thing).
+            IF lo_thing->get_thingname( ) = av_thing_name.
+              lv_found = abap_true.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+        CATCH /aws1/cx_rt_generic.
+      ENDTRY.
+
+      IF lv_found = abap_false.
+        WAIT UP TO 5 SECONDS.
+        lv_attempts = lv_attempts + 1.
+      ENDIF.
+    ENDWHILE.
+
+    " Now call the action under test and assert on its result.
+    DATA(lo_action_result) = ao_actions->search_index(
       " iv_query = 'thingName:sap-abap-iot-*'
       iv_query = |thingName:{ av_thing_name }|
     ).
 
     cl_abap_unit_assert=>assert_bound(
-      act = lo_result
+      act = lo_action_result
       msg = 'search_index: result must be bound'
     ).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lines( lo_result->get_things( ) )
+      act = lines( lo_action_result->get_things( ) )
       msg = |search_index: must find at least the shared thing { av_thing_name }|
     ).
 
-    " Verify the shared thing appears in the results.
-    DATA lv_found TYPE abap_bool.
-    LOOP AT lo_result->get_things( ) INTO DATA(lo_thing).
-      IF lo_thing->get_thingname( ) = av_thing_name.
-        lv_found = abap_true.
+    DATA lv_found2 TYPE abap_bool.
+    LOOP AT lo_action_result->get_things( ) INTO DATA(lo_thing2).
+      IF lo_thing2->get_thingname( ) = av_thing_name.
+        lv_found2 = abap_true.
         EXIT.
       ENDIF.
     ENDLOOP.
 
     cl_abap_unit_assert=>assert_true(
-      act = lv_found
+      act = lv_found2
       msg = |search_index: shared thing { av_thing_name } must appear in results|
     ).
   ENDMETHOD.
