@@ -426,25 +426,26 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
 * TEST: describe_job
 * =====================================================================
   METHOD describe_job.
-    " Action must complete without raising an exception.
-    ao_actions->describe_job(
+    " Call the action and validate its RETURNING value directly.
+    DATA(lo_result) = ao_actions->describe_job(
       iv_account_id = av_account_id
       iv_job_id     = av_job_describe
     ).
 
-    " Cross-check: independently describe the same job and verify ID.
-    DATA(lo_desc) = ao_s3c->describejob(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_describe
-    ).
+    " Result object must be bound.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'describe_job: returned result object must be bound' ).
+
+    " Job ID in the result must match what we asked for.
     cl_abap_unit_assert=>assert_equals(
-      act = lo_desc->get_job( )->get_jobid( )
+      act = lo_result->get_job( )->get_jobid( )
       exp = av_job_describe
       msg = 'describe_job: returned job ID must match the requested ID' ).
 
     " Status must be a non-empty string (Suspended / Ready / Active / …).
     cl_abap_unit_assert=>assert_not_initial(
-      act = lo_desc->get_job( )->get_status( )
+      act = lo_result->get_job( )->get_status( )
       msg = 'describe_job: job status must not be empty' ).
   ENDMETHOD.
 
@@ -493,17 +494,18 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
       )
     ).
 
-    " Action must complete without raising an exception.
-    ao_actions->get_job_tagging(
+    " Call the action and validate its RETURNING value directly.
+    DATA(lo_result) = ao_actions->get_job_tagging(
       iv_account_id = av_account_id
       iv_job_id     = av_job_get_tag
     ).
 
-    " Independently verify at least one tag is present.
-    DATA(lo_result) = ao_s3c->getjobtagging(
-      iv_accountid = av_account_id
-      iv_jobid     = av_job_get_tag
-    ).
+    " Result object must be bound.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'get_job_tagging: returned result object must be bound' ).
+
+    " The tag we seeded must be present in the returned list.
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( lines( lo_result->get_tags( ) ) >= 1 )
       msg = 'get_job_tagging: at least one tag must exist on the job' ).
@@ -514,25 +516,13 @@ CLASS ltc_awsex_cl_s3c_actions IMPLEMENTATION.
 * TEST: list_jobs
 * =====================================================================
   METHOD list_jobs.
-    " Action must complete without raising an exception.
-    ao_actions->list_jobs( iv_account_id = av_account_id ).
+    " Call the action and validate its RETURNING value directly.
+    DATA(lo_result) = ao_actions->list_jobs( iv_account_id = av_account_id ).
 
-    " Independently verify via the SDK that at least one job is visible.
-    DATA(lo_result) = ao_s3c->listjobs(
-      iv_accountid   = av_account_id
-      it_jobstatuses = VALUE /aws1/cl_s3cjobstatuslist_w=>tt_jobstatuslist(
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'New' )       )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Preparing' ) )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Suspended' ) )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Ready' )     )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Active' )    )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Pausing' )   )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Paused' )    )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Complete' )  )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Cancelled' ) )
-        ( NEW /aws1/cl_s3cjobstatuslist_w( 'Failed' )    )
-      )
-    ).
+    " Result object must be bound.
+    cl_abap_unit_assert=>assert_bound(
+      act = lo_result
+      msg = 'list_jobs: returned result object must be bound' ).
 
     " We created several jobs in class_setup – at least one must appear.
     cl_abap_unit_assert=>assert_true(
