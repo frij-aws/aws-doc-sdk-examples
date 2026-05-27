@@ -344,17 +344,17 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
   " ════════════════════════════════════════════════════════════════════════
   " Test: list_things
-  " The shared thing must appear in the full paginated result.
+  " The shared thing must appear in the full accumulated result table.
   " ════════════════════════════════════════════════════════════════════════
   METHOD list_things.
-    DATA(lo_result) = ao_iot_actions->list_things( ).
+    DATA(lt_things) = ao_iot_actions->list_things( ).
 
-    cl_abap_unit_assert=>assert_bound(
-      act = lo_result
-      msg = 'list_things: result not bound' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lt_things
+      msg = 'list_things: result table is empty' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_result->get_things( ) INTO DATA(lo_thing).
+    LOOP AT lt_things INTO DATA(lo_thing).
       IF lo_thing->get_thingname( ) = av_thing_name.
         lv_found = abap_true.
       ENDIF.
@@ -478,14 +478,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
   " The shared certificate (created in class_setup) must appear in results.
   " ════════════════════════════════════════════════════════════════════════
   METHOD list_certificates.
-    DATA(lo_result) = ao_iot_actions->list_certificates( ).
+    DATA(lt_certs) = ao_iot_actions->list_certificates( ).
 
-    cl_abap_unit_assert=>assert_bound(
-      act = lo_result
-      msg = 'list_certificates: result not bound' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lt_certs
+      msg = 'list_certificates: result table is empty' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_result->get_certificates( ) INTO DATA(lo_cert).
+    LOOP AT lt_certs INTO DATA(lo_cert).
       IF lo_cert->get_certificateid( ) = av_cert_id.
         lv_found = abap_true.
       ENDIF.
@@ -634,14 +634,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
   " The shared rule created in class_setup must appear in results.
   " ════════════════════════════════════════════════════════════════════════
   METHOD list_topic_rules.
-    DATA(lo_result) = ao_iot_actions->list_topic_rules( ).
+    DATA(lt_rules) = ao_iot_actions->list_topic_rules( ).
 
-    cl_abap_unit_assert=>assert_bound(
-      act = lo_result
-      msg = 'list_topic_rules: result not bound' ).
+    cl_abap_unit_assert=>assert_not_initial(
+      act = lt_rules
+      msg = 'list_topic_rules: result table is empty' ).
 
     DATA lv_found TYPE abap_bool VALUE abap_false.
-    LOOP AT lo_result->get_rules( ) INTO DATA(lo_rule).
+    LOOP AT lt_rules INTO DATA(lo_rule).
       IF lo_rule->get_rulename( ) = av_rule_name.
         lv_found = abap_true.
       ENDIF.

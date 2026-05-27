@@ -19,12 +19,12 @@ CLASS /awsex/cl_iot_actions DEFINITION
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists AWS IoT things.
-    " @parameter oo_result | The result object containing the list of things
+    " Lists all AWS IoT things across all pages.
+    " @parameter ot_things | The complete list of all things
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_things
       RETURNING
-        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlistthingsresponse
+        VALUE(ot_things) TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist
       RAISING
         /aws1/cx_rt_generic.
 
@@ -54,19 +54,19 @@ CLASS /awsex/cl_iot_actions DEFINITION
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS describe_endpoint
       IMPORTING
-        !iv_endpoint_type         TYPE /aws1/iotendpointtype
-                                  DEFAULT 'iot:Data-ATS'
+        !iv_endpoint_type          TYPE /aws1/iotendpointtype
+                                   DEFAULT 'iot:Data-ATS'
       RETURNING
         VALUE(ov_endpoint_address) TYPE /aws1/iotendpointaddress
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists AWS IoT certificates.
-    " @parameter oo_result | The result object containing the list of certificates
+    " Lists all AWS IoT certificates across all pages.
+    " @parameter ot_certs | The complete list of all certificates
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_certificates
       RETURNING
-        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlistcertsresponse
+        VALUE(ot_certs) TYPE /aws1/cl_iotcertificate=>tt_certificates
       RAISING
         /aws1/cx_rt_generic.
 
@@ -105,12 +105,12 @@ CLASS /awsex/cl_iot_actions DEFINITION
       RAISING
         /aws1/cx_rt_generic.
 
-    " Lists AWS IoT topic rules.
-    " @parameter oo_result | The result object containing the list of rules
+    " Lists all AWS IoT topic rules across all pages.
+    " @parameter ot_rules | The complete list of all topic rules
     " @raising /aws1/cx_rt_generic | Thrown when operation fails
     METHODS list_topic_rules
       RETURNING
-        VALUE(oo_result) TYPE REF TO /aws1/cl_iotlisttopicrulesrsp
+        VALUE(ot_rules) TYPE /aws1/cl_iottopicrulelstitem=>tt_topicruleslist
       RAISING
         /aws1/cx_rt_generic.
 
@@ -159,11 +159,10 @@ ENDCLASS.
 CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
   METHOD create_thing.
+    " snippet-start:[iot.abapv1.create_thing]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_thing]
     TRY.
         oo_result = lo_iot->creatething(
           iv_thingname = iv_thing_name ).
@@ -179,27 +178,24 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_things.
+    " snippet-start:[iot.abapv1.list_things]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_things]
     TRY.
         " Collect all things by following the pagination token.
-        DATA lt_things TYPE /aws1/cl_iotthingattribute=>tt_thingattributelist.
         DATA lv_nexttoken TYPE /aws1/iotnexttoken.
 
         DO.
           DATA(lo_result) = lo_iot->listthings( iv_nexttoken = lv_nexttoken ).
-          APPEND LINES OF lo_result->get_things( ) TO lt_things.
+          APPEND LINES OF lo_result->get_things( ) TO ot_things.
           lv_nexttoken = lo_result->get_nexttoken( ).
           IF lv_nexttoken IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        oo_result = lo_result.
-        MESSAGE |Retrieved { lines( lt_things ) } IoT things.| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_things ) } IoT things.| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'I'.
         RAISE EXCEPTION NEW /aws1/cx_rt_service_generic( ).
@@ -212,11 +208,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_keys_and_certificate.
+    " snippet-start:[iot.abapv1.create_keys_and_certificate]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_keys_and_certificate]
     TRY.
         oo_result = lo_iot->createkeysandcertificate( iv_setasactive = abap_true ).
         MESSAGE |Certificate created: { oo_result->get_certificateid( ) }| TYPE 'I'.
@@ -229,11 +224,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD attach_thing_principal.
+    " snippet-start:[iot.abapv1.attach_thing_principal]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.attach_thing_principal]
     TRY.
         lo_iot->attachthingprincipal(
           iv_thingname = iv_thing_name
@@ -251,11 +245,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD describe_endpoint.
+    " snippet-start:[iot.abapv1.describe_endpoint]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.describe_endpoint]
     " iv_endpoint_type = 'iot:Data-ATS' - Endpoint type for data operations
     TRY.
         DATA(lo_result) = lo_iot->describeendpoint( iv_endpointtype = iv_endpoint_type ).
@@ -273,27 +266,24 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_certificates.
+    " snippet-start:[iot.abapv1.list_certificates]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_certificates]
     TRY.
         " Collect all certificates by following the pagination marker.
-        DATA lt_certs TYPE /aws1/cl_iotcertificate=>tt_certificates.
         DATA lv_marker TYPE /aws1/iotmarker.
 
         DO.
           DATA(lo_result) = lo_iot->listcertificates( iv_marker = lv_marker ).
-          APPEND LINES OF lo_result->get_certificates( ) TO lt_certs.
+          APPEND LINES OF lo_result->get_certificates( ) TO ot_certs.
           lv_marker = lo_result->get_nextmarker( ).
           IF lv_marker IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        oo_result = lo_result.
-        MESSAGE |Retrieved { lines( lt_certs ) } IoT certificates.| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_certs ) } IoT certificates.| TYPE 'I'.
       CATCH /aws1/cx_iotthrottlingex.
         MESSAGE 'Request throttled. Please try again later.' TYPE 'I'.
         RAISE EXCEPTION NEW /aws1/cx_rt_service_generic( ).
@@ -306,11 +296,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD detach_thing_principal.
+    " snippet-start:[iot.abapv1.detach_thing_principal]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.detach_thing_principal]
     TRY.
         lo_iot->detachthingprincipal(
           iv_thingname = iv_thing_name
@@ -328,11 +317,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_certificate.
+    " snippet-start:[iot.abapv1.delete_certificate]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_certificate]
     TRY.
         " Certificates must be deactivated before they can be deleted.
         lo_iot->updatecertificate(
@@ -352,11 +340,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD create_topic_rule.
+    " snippet-start:[iot.abapv1.create_topic_rule]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.create_topic_rule]
     TRY.
         " Build the SNS action that will receive messages matching the rule.
         DATA(lo_sns_action) = NEW /aws1/cl_iotsnsaction(
@@ -374,7 +361,7 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
           it_actions = lt_actions ).
 
         lo_iot->createtopicrule(
-          iv_rulename        = iv_rule_name
+          iv_rulename         = iv_rule_name
           io_topicrulepayload = lo_payload ).
         MESSAGE |IoT topic rule created: { iv_rule_name }| TYPE 'I'.
       CATCH /aws1/cx_iotresrcalrdyexistsex.
@@ -388,27 +375,24 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD list_topic_rules.
+    " snippet-start:[iot.abapv1.list_topic_rules]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.list_topic_rules]
     TRY.
         " Collect all topic rules by following the pagination token.
-        DATA lt_rules TYPE /aws1/cl_iottopicrulelstitem=>tt_topicruleslist.
         DATA lv_nexttoken TYPE /aws1/iotnexttoken.
 
         DO.
           DATA(lo_result) = lo_iot->listtopicrules( iv_nexttoken = lv_nexttoken ).
-          APPEND LINES OF lo_result->get_rules( ) TO lt_rules.
+          APPEND LINES OF lo_result->get_rules( ) TO ot_rules.
           lv_nexttoken = lo_result->get_nexttoken( ).
           IF lv_nexttoken IS INITIAL.
             EXIT.
           ENDIF.
         ENDDO.
 
-        oo_result = lo_result.
-        MESSAGE |Retrieved { lines( lt_rules ) } IoT topic rules.| TYPE 'I'.
+        MESSAGE |Retrieved { lines( ot_rules ) } IoT topic rules.| TYPE 'I'.
       CATCH /aws1/cx_rt_service_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
@@ -418,11 +402,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD search_index.
+    " snippet-start:[iot.abapv1.search_index]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.search_index]
     " iv_query_string = 'thingName:MyThing*' - Fleet indexing query string
     TRY.
         oo_result = lo_iot->searchindex( iv_querystring = iv_query_string ).
@@ -442,11 +425,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD update_indexing_configuration.
+    " snippet-start:[iot.abapv1.update_indexing_configuration]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.update_indexing_configuration]
     TRY.
         lo_iot->updateindexingconfiguration(
           io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
@@ -461,11 +443,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_thing.
+    " snippet-start:[iot.abapv1.delete_thing]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_thing]
     TRY.
         lo_iot->deletething( iv_thingname = iv_thing_name ).
         MESSAGE |IoT thing deleted: { iv_thing_name }| TYPE 'I'.
@@ -481,11 +462,10 @@ CLASS /awsex/cl_iot_actions IMPLEMENTATION.
 
 
   METHOD delete_topic_rule.
+    " snippet-start:[iot.abapv1.delete_topic_rule]
     CONSTANTS cv_pfl TYPE /aws1/rt_profile_id VALUE 'ZCODE_DEMO'.
     DATA(lo_session) = /aws1/cl_rt_session_aws=>create( cv_pfl ).
     DATA(lo_iot) = /aws1/cl_iot_factory=>create( lo_session ).
-
-    " snippet-start:[iot.abapv1.delete_topic_rule]
     TRY.
         lo_iot->deletetopicrule( iv_rulename = iv_rule_name ).
         MESSAGE |IoT topic rule deleted: { iv_rule_name }| TYPE 'I'.
