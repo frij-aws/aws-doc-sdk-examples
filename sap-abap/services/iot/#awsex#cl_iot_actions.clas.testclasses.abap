@@ -103,10 +103,13 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
       iv_principal = av_cert_arn ).
 
     " ── SNS topic for topic-rule tests ───────────────────────────────────
+    DATA lt_sns_tags TYPE /aws1/cl_snstag=>tt_taglist.
+    DATA lo_sns_tag  TYPE REF TO /aws1/cl_snstag.
+    lo_sns_tag = NEW /aws1/cl_snstag( iv_key = 'convert_test' iv_value = 'true' ).
+    APPEND lo_sns_tag TO lt_sns_tags.
     DATA(lo_sns_result) = ao_sns->createtopic(
       iv_name = |sap-abap-iot-sns-{ lv_uuid(16) }|
-      it_tags = VALUE /aws1/cl_snstag=>tt_taglist(
-        ( NEW /aws1/cl_snstag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+      it_tags = lt_sns_tags ).
     av_sns_topic_arn = lo_sns_result->get_topicarn( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = av_sns_topic_arn
@@ -121,11 +124,14 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
     av_iam_role_name = |sap-abap-iot-role-{ lv_uuid(16) }|.
 
+    DATA lt_iam_tags TYPE /aws1/cl_iamtag=>tt_taglisttype.
+    DATA lo_iam_tag  TYPE REF TO /aws1/cl_iamtag.
+    lo_iam_tag = NEW /aws1/cl_iamtag( iv_key = 'convert_test' iv_value = 'true' ).
+    APPEND lo_iam_tag TO lt_iam_tags.
     DATA(lo_role) = ao_iam->createrole(
       iv_rolename                = av_iam_role_name
       iv_assumerolepolicydocument = lv_trust
-      it_tags = VALUE /aws1/cl_iamtag=>tt_taglisttype(
-        ( NEW /aws1/cl_iamtag( iv_key = 'convert_test' iv_value = 'true' ) ) ) ).
+      it_tags = lt_iam_tags ).
     av_iam_role_arn = lo_role->get_role( )->get_arn( ).
     cl_abap_unit_assert=>assert_not_initial(
       act = av_iam_role_arn
@@ -301,8 +307,9 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
 
 
   METHOD build_iot_tags.
-    rt_tags = VALUE /aws1/cl_iottag=>tt_taglist(
-      ( NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ) ) ).
+    DATA lo_tag TYPE REF TO /aws1/cl_iottag.
+    lo_tag = NEW /aws1/cl_iottag( iv_key = 'convert_test' iv_value = 'true' ).
+    APPEND lo_tag TO rt_tags.
   ENDMETHOD.
 
 
