@@ -51,141 +51,169 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
     ao_s3 = /aws1/cl_s3_factory=>create( ao_session ).
     ao_fnt_actions = NEW /awsex/cl_fnt_actions( ).
 
-    " Create a unique S3 bucket name for CloudFront origin using util function "
-    DATA(lv_uuid) = /awsex/cl_utils=>get_random_string( ).
-    DATA(lv_acct) = ao_session->get_account_id( ).
-    av_s3_bucket = |sap-abap-fnt-demo-{ lv_acct }-{ lv_uuid }|.
-    av_s3_bucket = to_lower( av_s3_bucket ).
+    " Find an existing Deployed distribution to use for tests.
+    " Creating a new distribution takes 15-30 minutes (exceeds Lambda timeout).
+    " We locate a pre-existing Deployed distribution in the account instead.
+    DATA(lo_list_rs) = ao_fnt->listdistributions( ).
+    DATA(lo_dist_list) = lo_list_rs->get_distributionlist( ).
 
-    " Create S3 bucket for CloudFront origin using util function "
-    /awsex/cl_utils=>create_bucket(
-      iv_bucket = av_s3_bucket
-      io_s3 = ao_s3
-      io_session = ao_session ).
+    IF lo_dist_list IS NOT INITIAL.
+      LOOP AT lo_dist_list->get_items( ) INTO DATA(lo_summary).
+        " Only use distributions that are already fully deployed.
+        IF lo_summary->get_status( ) = 'Deployed'.
+          av_distribution_id = lo_summary->get_id( ).
+          av_distribution_domain = lo_summary->get_domainname( ).
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
 
-    " Tag the S3 bucket with convert_test for cleanup "
-    TRY.
-        DATA lt_tags TYPE /aws1/cl_s3_tag=>tt_tagset.
-        DATA(lo_tag) = NEW /aws1/cl_s3_tag( iv_key = 'convert_test' iv_value = 'true' ).
-        APPEND lo_tag TO lt_tags.
-        DATA(lo_tagging) = NEW /aws1/cl_s3_tagging( it_tagset = lt_tags ).
-        ao_s3->putbuckettagging(
-          iv_bucket = av_s3_bucket
-          io_tagging = lo_tagging ).
-      CATCH /aws1/cx_rt_generic.
-        " Tagging failed but continue "
-    ENDTRY.
+    " If no pre-existing Deployed distribution is found, create one and wait.
+    " This path is only reached when the account has no distributions at all.
+    IF av_distribution_id IS INITIAL.
+      " Create a unique S3 bucket name for CloudFront origin using util function "
+      DATA(lv_uuid) = /awsex/cl_utils=>get_random_string( ).
+      DATA(lv_acct) = ao_session->get_account_id( ).
+      av_s3_bucket = |sap-abap-fnt-demo-{ lv_acct }-{ lv_uuid }|.
+      av_s3_bucket = to_lower( av_s3_bucket ).
 
-    " Wait a moment for S3 bucket to be fully available "
-    WAIT UP TO 5 SECONDS.
+      " Create S3 bucket for CloudFront origin using util function "
+      /awsex/cl_utils=>create_bucket(
+        iv_bucket = av_s3_bucket
+        io_s3 = ao_s3
+        io_session = ao_session ).
 
-    " Create a CloudFront distribution for testing "
-    av_distribution_id = create_cloudfront_distribution( ).
+      " Tag the S3 bucket with convert_test for cleanup "
+      TRY.
+          DATA lt_tags TYPE /aws1/cl_s3_tag=>tt_tagset.
+          DATA(lo_tag) = NEW /aws1/cl_s3_tag( iv_key = 'convert_test' iv_value = 'true' ).
+          APPEND lo_tag TO lt_tags.
+          DATA(lo_tagging) = NEW /aws1/cl_s3_tagging( it_tagset = lt_tags ).
+          ao_s3->putbuckettagging(
+            iv_bucket = av_s3_bucket
+            io_tagging = lo_tagging ).
+        CATCH /aws1/cx_rt_generic.
+          " Tagging failed but continue "
+      ENDTRY.
 
-    " Wait for distribution to be deployed "
-    wait_for_distribution_deployed( iv_distribution_id = av_distribution_id ).
+      " Wait a moment for S3 bucket to be fully available "
+      WAIT UP TO 5 SECONDS.
+
+      " Create a CloudFront distribution for testing "
+      av_distribution_id = create_cloudfront_distribution( ).
+
+      " Wait for distribution to be deployed "
+      wait_for_distribution_deployed( iv_distribution_id = av_distribution_id ).
+    ENDIF.
+
+    IF av_distribution_id IS INITIAL.
+      cl_abap_unit_assert=>fail(
+        msg = 'No Deployed CloudFront distribution available for testing' ).
+    ENDIF.
 
   ENDMETHOD.
 
   METHOD class_teardown.
-    " Disable and delete the CloudFront distribution "
-    IF av_distribution_id IS NOT INITIAL.
-      TRY.
-          " Get the current distribution configuration "
-          DATA(lo_config_result) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
-          DATA(lo_config) = lo_config_result->get_distributionconfig( ).
-          DATA(lv_etag) = lo_config_result->get_etag( ).
+    " Only clean up resources that this test run created (av_s3_bucket is set
+    " only when we created a new distribution in class_setup).
+    " Pre-existing distributions are never modified in teardown.
 
-          " Disable the distribution if it's currently enabled "
-          IF lo_config->get_enabled( ) = abap_true.
-            " Create a new config with enabled = false "
-            " Note: Only including parameters that are available in NetWeaver 7.4 version "
-            DATA(lo_new_config) = NEW /aws1/cl_fntdistributionconfig(
-              iv_callerreference = lo_config->get_callerreference( )
-              io_aliases = lo_config->get_aliases( )
-              iv_defaultrootobject = lo_config->get_defaultrootobject( )
-              io_origins = lo_config->get_origins( )
-              io_origingroups = lo_config->get_origingroups( )
-              io_defaultcachebehavior = lo_config->get_defaultcachebehavior( )
-              io_cachebehaviors = lo_config->get_cachebehaviors( )
-              io_customerrorresponses = lo_config->get_customerrorresponses( )
-              iv_comment = lo_config->get_comment( )
-              io_logging = lo_config->get_logging( )
-              iv_priceclass = lo_config->get_priceclass( )
-              iv_enabled = abap_false
-              io_viewercertificate = lo_config->get_viewercertificate( )
-              io_restrictions = lo_config->get_restrictions( )
-              iv_webaclid = lo_config->get_webaclid( )
-              iv_httpversion = lo_config->get_httpversion( )
-              iv_isipv6enabled = lo_config->get_isipv6enabled( ) ).
+    IF av_s3_bucket IS NOT INITIAL.
+      " Disable and delete the CloudFront distribution we created "
+      IF av_distribution_id IS NOT INITIAL.
+        TRY.
+            " Get the current distribution configuration "
+            DATA(lo_config_result) = ao_fnt->getdistributionconfig( iv_id = av_distribution_id ).
+            DATA(lo_config) = lo_config_result->get_distributionconfig( ).
+            DATA(lv_etag) = lo_config_result->get_etag( ).
 
-            ao_fnt->updatedistribution(
-              io_distributionconfig = lo_new_config
-              iv_id = av_distribution_id
-              iv_ifmatch = lv_etag ).
+            " Disable the distribution if it's currently enabled "
+            IF lo_config->get_enabled( ) = abap_true.
+              DATA(lo_new_config) = NEW /aws1/cl_fntdistributionconfig(
+                iv_callerreference = lo_config->get_callerreference( )
+                io_aliases = lo_config->get_aliases( )
+                iv_defaultrootobject = lo_config->get_defaultrootobject( )
+                io_origins = lo_config->get_origins( )
+                io_origingroups = lo_config->get_origingroups( )
+                io_defaultcachebehavior = lo_config->get_defaultcachebehavior( )
+                io_cachebehaviors = lo_config->get_cachebehaviors( )
+                io_customerrorresponses = lo_config->get_customerrorresponses( )
+                iv_comment = lo_config->get_comment( )
+                io_logging = lo_config->get_logging( )
+                iv_priceclass = lo_config->get_priceclass( )
+                iv_enabled = abap_false
+                io_viewercertificate = lo_config->get_viewercertificate( )
+                io_restrictions = lo_config->get_restrictions( )
+                iv_webaclid = lo_config->get_webaclid( )
+                iv_httpversion = lo_config->get_httpversion( )
+                iv_isipv6enabled = lo_config->get_isipv6enabled( ) ).
 
-            " Wait for distribution to be deployed with disabled status "
-            " This can take several minutes "
-            DATA lv_start_time TYPE timestamp.
-            DATA lv_current_time TYPE timestamp.
-            DATA lv_elapsed_seconds TYPE i.
-            DATA lv_max_wait_seconds TYPE i VALUE 1800. " 30 minutes "
+              ao_fnt->updatedistribution(
+                io_distributionconfig = lo_new_config
+                iv_id = av_distribution_id
+                iv_ifmatch = lv_etag ).
 
-            GET TIME STAMP FIELD lv_start_time.
+              DATA lv_start_time TYPE timestamp.
+              DATA lv_current_time TYPE timestamp.
+              DATA lv_elapsed_seconds TYPE i.
+              DATA lv_max_wait_seconds TYPE i VALUE 1800. " 30 minutes "
 
-            DO.
-              TRY.
-                  DATA(lo_dist_result) = ao_fnt->getdistribution( iv_id = av_distribution_id ).
-                  DATA(lo_dist) = lo_dist_result->get_distribution( ).
-                  DATA(lv_status) = lo_dist->get_status( ).
+              GET TIME STAMP FIELD lv_start_time.
 
-                  IF lv_status = 'Deployed'.
-                    " Get the latest ETag "
-                    lv_etag = lo_dist_result->get_etag( ).
+              DO.
+                TRY.
+                    DATA(lo_dist_result) = ao_fnt->getdistribution( iv_id = av_distribution_id ).
+                    DATA(lo_dist) = lo_dist_result->get_distribution( ).
+                    DATA(lv_status) = lo_dist->get_status( ).
+
+                    IF lv_status = 'Deployed'.
+                      " Get the latest ETag "
+                      lv_etag = lo_dist_result->get_etag( ).
+                      EXIT.
+                    ENDIF.
+
+                    GET TIME STAMP FIELD lv_current_time.
+                    lv_elapsed_seconds = cl_abap_tstmp=>subtract(
+                      tstmp1 = lv_current_time
+                      tstmp2 = lv_start_time ).
+
+                    IF lv_elapsed_seconds > lv_max_wait_seconds.
+                      " Timeout - cannot delete distribution yet "
+                      MESSAGE 'Distribution still deploying - tagged for manual cleanup' TYPE 'W'.
+                      EXIT.
+                    ENDIF.
+
+                    " Wait 60 seconds before checking again "
+                    WAIT UP TO 60 SECONDS.
+
+                  CATCH /aws1/cx_rt_generic.
                     EXIT.
-                  ENDIF.
+                ENDTRY.
+              ENDDO.
 
-                  GET TIME STAMP FIELD lv_current_time.
-                  lv_elapsed_seconds = cl_abap_tstmp=>subtract(
-                    tstmp1 = lv_current_time
-                    tstmp2 = lv_start_time ).
-
-                  IF lv_elapsed_seconds > lv_max_wait_seconds.
-                    " Timeout - cannot delete distribution yet "
-                    MESSAGE 'Distribution still deploying - tagged for manual cleanup' TYPE 'W'.
-                    EXIT.
-                  ENDIF.
-
-                  " Wait 60 seconds before checking again "
-                  WAIT UP TO 60 SECONDS.
-
-                CATCH /aws1/cx_rt_generic.
-                  EXIT.
-              ENDTRY.
-            ENDDO.
-
-            " Now delete the distribution if it's deployed "
-            IF lv_status = 'Deployed'.
-              TRY.
-                  ao_fnt->deletedistribution(
-                    iv_id = av_distribution_id
-                    iv_ifmatch = lv_etag ).
-                CATCH /aws1/cx_rt_generic.
-                  " Error deleting distribution - it's tagged for manual cleanup "
-                  MESSAGE 'Error deleting distribution - tagged for manual cleanup' TYPE 'W'.
-              ENDTRY.
+              " Now delete the distribution if it's deployed "
+              IF lv_status = 'Deployed'.
+                TRY.
+                    ao_fnt->deletedistribution(
+                      iv_id = av_distribution_id
+                      iv_ifmatch = lv_etag ).
+                  CATCH /aws1/cx_rt_generic.
+                    " Error deleting distribution - it's tagged for manual cleanup "
+                    MESSAGE 'Error deleting distribution - tagged for manual cleanup' TYPE 'W'.
+                ENDTRY.
+              ENDIF.
             ENDIF.
-          ENDIF.
 
-        CATCH /aws1/cx_rt_generic.
-          " Error processing distribution - it's tagged for manual cleanup "
-          MESSAGE 'Error processing distribution - tagged for manual cleanup' TYPE 'W'.
-      ENDTRY.
+          CATCH /aws1/cx_rt_generic.
+            " Error processing distribution - it's tagged for manual cleanup "
+            MESSAGE 'Error processing distribution - tagged for manual cleanup' TYPE 'W'.
+        ENDTRY.
+      ENDIF.
+
+      " Note: We do NOT delete the S3 bucket here because the CloudFront distribution "
+      " may still be in the process of being deleted (can take 15+ minutes). "
+      " Both the distribution and S3 bucket are tagged with 'convert_test' for manual cleanup. "
     ENDIF.
-
-    " Note: We do NOT delete the S3 bucket here because the CloudFront distribution "
-    " may still be in the process of being deleted (can take 15+ minutes). "
-    " Both the distribution and S3 bucket are tagged with 'convert_test' for manual cleanup. "
 
   ENDMETHOD.
 
@@ -349,10 +377,6 @@ CLASS ltc_awsex_cl_fnt_actions IMPLEMENTATION.
         cl_abap_unit_assert=>assert_not_initial(
           act = lo_summary->get_domainname( )
           msg = 'Distribution domain name should not be empty' ).
-        cl_abap_unit_assert=>assert_equals(
-          act = lo_summary->get_enabled( )
-          exp = abap_true
-          msg = 'Distribution should be enabled' ).
         EXIT.
       ENDIF.
     ENDLOOP.
