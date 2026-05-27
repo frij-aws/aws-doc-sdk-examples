@@ -123,11 +123,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
         ).
         ov_job_id = lo_result->get_jobid( ).
         MESSAGE |S3 Batch job created: { ov_job_id }| TYPE 'I'.
-      CATCH /aws1/cx_s3cbadrequestex INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -146,11 +142,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           iv_priority  = 60
         ).
         MESSAGE |Job { lo_result->get_jobid( ) } priority updated to { lo_result->get_priority( ) }| TYPE 'I'.
-      CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -169,15 +161,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           iv_requestedjobstatus = 'Cancelled'
         ).
         MESSAGE |Job { lo_result->get_jobid( ) } status updated to { lo_result->get_status( ) }| TYPE 'I'.
-      CATCH /aws1/cx_s3cjobstatusexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_s3cnotfoundexception INTO lo_ex.
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -200,11 +184,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
                   |status: { lo_job->get_status( ) } | &&
                   |priority: { lo_job->get_priority( ) }| TYPE 'I'.
         ENDIF.
-      CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -223,11 +203,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
         ).
         DATA(lt_tags) = oo_result->get_tags( ).
         MESSAGE |Retrieved { lines( lt_tags ) } tag(s) for job { iv_job_id }| TYPE 'I'.
-      CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -249,11 +225,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           )
         ).
         MESSAGE |Tags added to job { iv_job_id }| TYPE 'I'.
-      CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -283,11 +255,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
         ).
         DATA(lt_jobs) = oo_result->get_jobs( ).
         MESSAGE |Retrieved { lines( lt_jobs ) } S3 Batch job(s)| TYPE 'I'.
-      CATCH /aws1/cx_s3cinternalserviceex INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
@@ -305,11 +273,7 @@ CLASS /awsex/cl_s3c_actions IMPLEMENTATION.
           iv_jobid     = iv_job_id
         ).
         MESSAGE |Tags deleted for job { iv_job_id }| TYPE 'I'.
-      CATCH /aws1/cx_s3cnotfoundexception INTO DATA(lo_ex).
-        MESSAGE lo_ex->get_text( ) TYPE 'I'.
-        RAISE EXCEPTION TYPE /aws1/cx_rt_technical_generic
-          EXPORTING previous = lo_ex.
-      CATCH /aws1/cx_rt_generic INTO lo_ex.
+      CATCH /aws1/cx_rt_generic INTO DATA(lo_ex).
         MESSAGE lo_ex->get_text( ) TYPE 'I'.
         RAISE EXCEPTION lo_ex.
     ENDTRY.
