@@ -69,7 +69,7 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     ao_iot        = /aws1/cl_iot_factory=>create( ao_session ).
     ao_iam        = /aws1/cl_iam_factory=>create( ao_session ).
     ao_sns        = /aws1/cl_sns_factory=>create( ao_session ).
-    ao_iot_actions = NEW /awsex/cl_iot_actions( ).
+    CREATE OBJECT ao_iot_actions.
 
     DATA lv_uuid TYPE string.
     lv_uuid = /awsex/cl_utils=>get_random_string( ).
@@ -155,16 +155,24 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '-' IN av_rule_name WITH '_'.
 
     DATA lt_actions TYPE /aws1/cl_iotaction=>tt_actionlist.
-    APPEND NEW /aws1/cl_iotaction(
-      io_sns = NEW /aws1/cl_iotsnsaction(
+    DATA lo_sns_act TYPE REF TO /aws1/cl_iotsnsaction.
+    DATA lo_action  TYPE REF TO /aws1/cl_iotaction.
+    DATA lo_payload TYPE REF TO /aws1/cl_iottopicrulepayload.
+    CREATE OBJECT lo_sns_act
+      EXPORTING
         iv_targetarn = av_sns_topic_arn
-        iv_rolearn   = av_iam_role_arn ) ) TO lt_actions.
-
+        iv_rolearn   = av_iam_role_arn.
+    CREATE OBJECT lo_action
+      EXPORTING
+        io_sns = lo_sns_act.
+    APPEND lo_action TO lt_actions.
+    CREATE OBJECT lo_payload
+      EXPORTING
+        iv_sql     = |SELECT * FROM 'test/sap/abap/shared'|
+        it_actions = lt_actions.
     ao_iot->createtopicrule(
       iv_rulename         = av_rule_name
-      io_topicrulepayload = NEW /aws1/cl_iottopicrulepayload(
-        iv_sql     = |SELECT * FROM 'test/sap/abap/shared'|
-        it_actions = lt_actions ) ).
+      io_topicrulepayload = lo_payload ).
 
     " Derive the rule ARN so we can tag it.
     DATA(lv_acct)   = ao_session->get_account_id( ).
@@ -196,17 +204,25 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
     av_del_rule_name = |sap_abap_iot_del_{ lv_uuid(16) }|.
     REPLACE ALL OCCURRENCES OF '-' IN av_del_rule_name WITH '_'.
 
-    DATA lt_del_actions TYPE /aws1/cl_iotaction=>tt_actionlist.
-    APPEND NEW /aws1/cl_iotaction(
-      io_sns = NEW /aws1/cl_iotsnsaction(
+    DATA lt_del_actions  TYPE /aws1/cl_iotaction=>tt_actionlist.
+    DATA lo_del_sns_act  TYPE REF TO /aws1/cl_iotsnsaction.
+    DATA lo_del_action   TYPE REF TO /aws1/cl_iotaction.
+    DATA lo_del_payload  TYPE REF TO /aws1/cl_iottopicrulepayload.
+    CREATE OBJECT lo_del_sns_act
+      EXPORTING
         iv_targetarn = av_sns_topic_arn
-        iv_rolearn   = av_iam_role_arn ) ) TO lt_del_actions.
-
+        iv_rolearn   = av_iam_role_arn.
+    CREATE OBJECT lo_del_action
+      EXPORTING
+        io_sns = lo_del_sns_act.
+    APPEND lo_del_action TO lt_del_actions.
+    CREATE OBJECT lo_del_payload
+      EXPORTING
+        iv_sql     = |SELECT * FROM 'test/sap/abap/del'|
+        it_actions = lt_del_actions.
     ao_iot->createtopicrule(
       iv_rulename         = av_del_rule_name
-      io_topicrulepayload = NEW /aws1/cl_iottopicrulepayload(
-        iv_sql     = |SELECT * FROM 'test/sap/abap/del'|
-        it_actions = lt_del_actions ) ).
+      io_topicrulepayload = lo_del_payload ).
 
     DATA(lv_del_rule_arn) =
       |arn:aws:iot:{ lv_region }:{ lv_acct }:rule/{ av_del_rule_name }|.
@@ -722,9 +738,12 @@ CLASS ltc_awsex_cl_iot_actions IMPLEMENTATION.
   " ════════════════════════════════════════════════════════════════════════
   METHOD search_index.
     " Ensure indexing is enabled (idempotent – safe to call again here).
+    DATA lo_idx_conf TYPE REF TO /aws1/cl_iotthingindexingconf.
+    CREATE OBJECT lo_idx_conf
+      EXPORTING
+        iv_thingindexingmode = 'REGISTRY'.
     ao_iot->updateindexingconfiguration(
-      io_thingindexingconf = NEW /aws1/cl_iotthingindexingconf(
-        iv_thingindexingmode = 'REGISTRY' ) ).
+      io_thingindexingconf = lo_idx_conf ).
 
     " Poll SearchIndex until the index is ready (IndexNotReadyException resolves).
     DATA lv_ready   TYPE abap_bool VALUE abap_false.
