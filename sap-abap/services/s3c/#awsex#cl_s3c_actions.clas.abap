@@ -12,7 +12,7 @@ CLASS /awsex/cl_s3c_actions DEFINITION
         !iv_account_id       TYPE /aws1/s3caccountid
         !iv_role_arn         TYPE /aws1/s3ciamrolearn
         !iv_manifest_arn     TYPE /aws1/s3cs3keyarnstring
-        !iv_manifest_etag    TYPE /aws1/s3cnonemptymaxlength1024st
+        !iv_manifest_etag    TYPE string
         !iv_report_bucket    TYPE /aws1/s3cs3bucketarnstring
       RETURNING
         VALUE(ov_job_id)     TYPE /aws1/s3cjobid
